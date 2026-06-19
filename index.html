@@ -11,6 +11,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 /* ═══════════════════════════════════════════
    DESIGN TOKENS
@@ -98,6 +99,33 @@ nav{
   transition:background .15s;
 }
 .nav-btn:hover{background:var(--sa-green-d);}
+
+/* ── AUTH MODAL ── */
+.auth-overlay{
+  position:fixed;inset:0;z-index:500;
+  background:rgba(0,0,0,.55);
+  display:flex;align-items:center;justify-content:center;
+  padding:20px;
+}
+.auth-card{
+  background:var(--surf);
+  border-radius:var(--radius);
+  padding:28px 24px;
+  max-width:380px;width:100%;
+  position:relative;
+  box-shadow:0 10px 40px rgba(0,0,0,.25);
+}
+.auth-close{
+  position:absolute;top:14px;right:14px;
+  background:none;border:none;cursor:pointer;
+  font-size:16px;color:var(--ink3);
+}
+.auth-card h3{font-size:19px;font-weight:700;margin-bottom:4px;}
+.auth-sub{font-size:13px;color:var(--ink2);margin-bottom:18px;}
+.auth-switch{font-size:13px;color:var(--ink2);text-align:center;margin-top:14px;}
+.auth-switch a{color:var(--sa-green);font-weight:600;text-decoration:none;}
+#account-pill{cursor:pointer;}
+#account-pill:hover{background:rgba(255,255,255,.18);}
 
 /* ── HERO ── */
 .hero{
@@ -418,8 +446,6 @@ textarea{min-height:90px;}
 }
 .pay-sa{background:var(--sa-green);color:#fff;}
 .pay-sa:hover{background:var(--sa-green-d);}
-.pay-intl{background:var(--ink);color:#fff;}
-.pay-intl:hover{background:#333;}
 .pay-skip{background:transparent;color:var(--ink3);
   font-size:13px;border:1px solid var(--border);
   padding:9px;}
@@ -591,10 +617,38 @@ footer a{color:var(--sa-green);text-decoration:none;}
     Resume<em>AI</em>&nbsp;SA
   </div>
   <div class="nav-right">
-    <div class="nav-tag">🌍 SA &amp; Worldwide</div>
+    <div class="nav-tag" id="account-pill" onclick="openAuth()">👤 Sign in / Register</div>
     <button class="nav-btn" onclick="scrollToApp()">Build My CV →</button>
   </div>
 </nav>
+
+<!-- AUTH MODAL -->
+<div class="auth-overlay hide" id="auth-overlay">
+  <div class="auth-card">
+    <button class="auth-close" onclick="closeAuth()">✕</button>
+
+    <div id="auth-signup-view">
+      <h3>Create your free account</h3>
+      <p class="auth-sub">Register to start building your CV. Takes 30 seconds.</p>
+      <div class="field" style="margin-bottom:10px;"><label>Full name</label><input type="text" id="su-name" placeholder="e.g. Thandiwe Mokoena"></div>
+      <div class="field" style="margin-bottom:10px;"><label>Email address</label><input type="email" id="su-email" placeholder="you@email.com"></div>
+      <div class="field" style="margin-bottom:14px;"><label>Password</label><input type="password" id="su-password" placeholder="At least 6 characters"></div>
+      <button class="gen-btn" id="su-btn" onclick="handleSignUp()">Create account</button>
+      <div class="err-box" id="err-signup"></div>
+      <p class="auth-switch">Already registered? <a href="#" onclick="showLogin();return false;">Log in</a></p>
+    </div>
+
+    <div id="auth-login-view" class="hide">
+      <h3>Welcome back</h3>
+      <p class="auth-sub">Log in to continue building your CV.</p>
+      <div class="field" style="margin-bottom:10px;"><label>Email address</label><input type="email" id="li-email" placeholder="you@email.com"></div>
+      <div class="field" style="margin-bottom:14px;"><label>Password</label><input type="password" id="li-password" placeholder="Your password"></div>
+      <button class="gen-btn" id="li-btn" onclick="handleLogIn()">Log in</button>
+      <div class="err-box" id="err-login"></div>
+      <p class="auth-switch">New here? <a href="#" onclick="showSignup();return false;">Create an account</a></p>
+    </div>
+  </div>
+</div>
 
 <!-- HERO -->
 <div class="hero">
@@ -615,14 +669,6 @@ footer a{color:var(--sa-green);text-decoration:none;}
 <div class="pricing-section" id="pricing">
   <div class="section-title">Simple, affordable pricing</div>
   <div class="section-sub">Start free. Upgrade when you need more CVs or premium features.</div>
-
-  <div class="currency-toggle">
-    <span>Show prices in:</span>
-    <div class="toggle-wrap">
-      <button class="toggle-opt on" id="tog-zar" onclick="setCurrency('ZAR')">🇿🇦 Rands</button>
-      <button class="toggle-opt" id="tog-usd" onclick="setCurrency('USD')">🌍 USD</button>
-    </div>
-  </div>
 
   <div class="price-grid">
     <!-- FREE -->
@@ -676,7 +722,7 @@ footer a{color:var(--sa-green);text-decoration:none;}
   </div>
 
   <div style="font-size:12px;color:var(--ink3);text-align:center;">
-    🔒 Payments processed securely via PayFast (SA) or Stripe (international). No subscription. Cancel anytime.
+    🔒 Payments processed securely via PayFast — EFT, Card, or SnapScan. No subscription. Cancel anytime.
   </div>
 </div>
 
@@ -930,7 +976,6 @@ footer a{color:var(--sa-green);text-decoration:none;}
 
     <div class="paywall-btns">
       <button class="pay-btn pay-sa" onclick="payFast()">🇿🇦 Pay with PayFast (EFT, Card, SnapScan)</button>
-      <button class="pay-btn pay-intl" onclick="payStripe()">🌍 Pay with Stripe (International card)</button>
       <button class="pay-btn pay-skip" onclick="closePaywall()">← Go back without paying</button>
     </div>
     <div class="free-notice">Secure payment · No subscription · Cancel anytime</div>
@@ -1006,24 +1051,47 @@ const CONFIG = {
   // Replace with your actual deployed URL:
   API_ENDPOINT: '/api/generate',
 
-  // PayFast merchant details (sign up free at payfast.co.za)
+  // ════════════════════════════════════════════════
+  // SUPABASE — registration & login
+  // From: Supabase Dashboard > Settings > API Keys
+  // Only the PUBLISHABLE key goes here. NEVER put the
+  // secret key in this file.
+  // ════════════════════════════════════════════════
+  SUPABASE_URL: 'https://jrkesmwqpwrjqxufazvs.supabase.co',
+  SUPABASE_ANON_KEY: 'PASTE_YOUR_PUBLISHABLE_KEY_HERE',
+
+  // ════════════════════════════════════════════════
+  // PAYFAST MERCHANT DETAILS — REPLACE THESE TWO LINES
+  //
+  // 1. Log in at https://www.payfast.co.za (once your
+  //    account is approved) and go to Settings > Integration
+  //    to copy your real Merchant ID and Merchant Key.
+  //
+  // 2. While waiting for approval, you can TEST with
+  //    PayFast's public sandbox credentials instead:
+  //      PAYFAST_MERCHANT_ID:  '10000100'
+  //      PAYFAST_MERCHANT_KEY: '46f0cd694581a'
+  //    and change PAYFAST_URL below to:
+  //      'https://sandbox.payfast.co.za/eng/process'
+  //
+  // 3. When you go live, swap in your REAL Merchant ID
+  //    and Key here, and make sure PAYFAST_URL points to
+  //    'https://www.payfast.co.za/eng/process'
+  // ════════════════════════════════════════════════
   PAYFAST_MERCHANT_ID: 'YOUR_PAYFAST_MERCHANT_ID',
   PAYFAST_MERCHANT_KEY: 'YOUR_PAYFAST_MERCHANT_KEY',
+  PAYFAST_URL: 'https://www.payfast.co.za/eng/process',
   PAYFAST_RETURN_URL: window.location.origin + '/?payment=success',
   PAYFAST_CANCEL_URL: window.location.origin + '/?payment=cancelled',
 
-  // Stripe checkout links (create at stripe.com)
-  STRIPE_STARTER: 'https://buy.stripe.com/YOUR_STARTER_LINK',
-  STRIPE_PRO:     'https://buy.stripe.com/YOUR_PRO_LINK',
-
-  // Plans
+  // Plans (South Africa only — ZAR)
   PLANS: {
-    ZAR: { starter: { price: 'R30',  note: 'ZAR · one-time', cvs: 3  },
-           pro:     { price: 'R99',  note: 'ZAR · 30 days',  cvs: 999 } },
-    USD: { starter: { price: '$1.50',note: 'USD · one-time', cvs: 3  },
-           pro:     { price: '$5',   note: 'USD · 30 days',  cvs: 999 } }
+    starter: { price: 'R30', note: 'ZAR · one-time', cvs: 3 },
+    pro:     { price: 'R99', note: 'ZAR · 30 days',  cvs: 999 }
   }
 };
+
+const supabase = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
 
 /* ──────────────────────────────────────────
    STATE
@@ -1031,70 +1099,172 @@ const CONFIG = {
 let uploadedText = '';
 let currentCV    = '';
 let currentPath  = '';
-let currency     = 'ZAR';
 let selectedPlan = 'starter';
 let loadTimer    = null;
+let currentUser  = null;
 
-// Credits: stored in localStorage. 
-// In production, validate server-side after payment webhook.
-function getCredits() {
-  const c = localStorage.getItem('resumeai_credits');
-  return c ? parseInt(c) : 1; // 1 free CV by default
+/* ──────────────────────────────────────────
+   AUTHENTICATION — Supabase
+────────────────────────────────────────── */
+function openAuth() {
+  if (currentUser) return; // already logged in, account-pill click does nothing extra
+  document.getElementById('auth-overlay').classList.remove('hide');
+  showSignup();
 }
-function setCredits(n) {
-  localStorage.setItem('resumeai_credits', n);
+function closeAuth() {
+  document.getElementById('auth-overlay').classList.add('hide');
+}
+function showSignup() {
+  document.getElementById('auth-signup-view').classList.remove('hide');
+  document.getElementById('auth-login-view').classList.add('hide');
+}
+function showLogin() {
+  document.getElementById('auth-login-view').classList.remove('hide');
+  document.getElementById('auth-signup-view').classList.add('hide');
+}
+
+async function handleSignUp() {
+  const name  = document.getElementById('su-name').value.trim();
+  const email = document.getElementById('su-email').value.trim();
+  const pass  = document.getElementById('su-password').value;
+  const errEl = document.getElementById('err-signup');
+  errEl.style.display = 'none';
+
+  if (!name)  { errEl.textContent = 'Please enter your full name.'; errEl.style.display='block'; return; }
+  if (!email) { errEl.textContent = 'Please enter your email address.'; errEl.style.display='block'; return; }
+  if (!pass || pass.length < 6) { errEl.textContent = 'Password must be at least 6 characters.'; errEl.style.display='block'; return; }
+
+  document.getElementById('su-btn').disabled = true;
+  try {
+    const { data, error } = await supabase.auth.signUp({
+      email, password: pass,
+      options: { data: { full_name: name } }
+    });
+    if (error) throw error;
+
+    // Create matching row in profiles table with 1 free credit
+    if (data.user) {
+      await supabase.from('profiles').insert({
+        id: data.user.id,
+        full_name: name,
+        email: email,
+        credits: 1
+      });
+    }
+
+    currentUser = data.user;
+    await refreshCreditsFromServer();
+    closeAuth();
+    updateAccountPill();
+  } catch (e) {
+    errEl.textContent = e.message || 'Something went wrong. Please try again.';
+    errEl.style.display = 'block';
+  } finally {
+    document.getElementById('su-btn').disabled = false;
+  }
+}
+
+async function handleLogIn() {
+  const email = document.getElementById('li-email').value.trim();
+  const pass  = document.getElementById('li-password').value;
+  const errEl = document.getElementById('err-login');
+  errEl.style.display = 'none';
+
+  if (!email || !pass) { errEl.textContent = 'Please enter your email and password.'; errEl.style.display='block'; return; }
+
+  document.getElementById('li-btn').disabled = true;
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password: pass });
+    if (error) throw error;
+    currentUser = data.user;
+    await refreshCreditsFromServer();
+    closeAuth();
+    updateAccountPill();
+  } catch (e) {
+    errEl.textContent = e.message || 'Could not log in. Check your email and password.';
+    errEl.style.display = 'block';
+  } finally {
+    document.getElementById('li-btn').disabled = false;
+  }
+}
+
+async function handleLogOut() {
+  await supabase.auth.signOut();
+  currentUser = null;
+  updateAccountPill();
   updateCreditsDisplay();
 }
-function useCredit() {
-  const c = getCredits();
-  setCredits(Math.max(0, c - 1));
+
+function updateAccountPill() {
+  const pill = document.getElementById('account-pill');
+  if (currentUser) {
+    const name = currentUser.user_metadata?.full_name || currentUser.email;
+    pill.textContent = '👤 ' + name.split(' ')[0] + ' (Log out)';
+    pill.onclick = handleLogOut;
+  } else {
+    pill.textContent = '👤 Sign in / Register';
+    pill.onclick = openAuth;
+  }
 }
+
+async function checkExistingSession() {
+  const { data } = await supabase.auth.getSession();
+  if (data.session) {
+    currentUser = data.session.user;
+    await refreshCreditsFromServer();
+    updateAccountPill();
+  }
+}
+
+/* ──────────────────────────────────────────
+   CREDITS — now stored server-side in Supabase
+   (profiles table), tied to the logged-in user
+────────────────────────────────────────── */
+let serverCredits = 0;
+
+async function refreshCreditsFromServer() {
+  if (!currentUser) { serverCredits = 0; updateCreditsDisplay(); return; }
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('credits')
+    .eq('id', currentUser.id)
+    .single();
+  if (!error && data) serverCredits = data.credits;
+  updateCreditsDisplay();
+}
+
+function getCredits() { return serverCredits; }
+
+async function useCredit() {
+  if (!currentUser) return;
+  serverCredits = Math.max(0, serverCredits - 1);
+  await supabase.from('profiles').update({ credits: serverCredits }).eq('id', currentUser.id);
+  updateCreditsDisplay();
+}
+
 function updateCreditsDisplay() {
   const c = getCredits();
   const el = document.getElementById('credits-display');
-  if (c <= 0) {
+  if (!currentUser) {
+    el.textContent = 'Sign in to see credits';
+    el.style.background = ''; el.style.color = '';
+  } else if (c <= 0) {
     el.textContent = 'No credits left';
-    el.style.background = '#fee2e2';
-    el.style.color = '#991b1b';
+    el.style.background = '#fee2e2'; el.style.color = '#991b1b';
   } else if (c >= 999) {
     el.textContent = 'Unlimited (Pro)';
-    el.style.background = '';
-    el.style.color = '';
+    el.style.background = ''; el.style.color = '';
   } else {
     el.textContent = c + ' CV' + (c===1?'':'s') + ' remaining';
-    el.style.background = '';
-    el.style.color = '';
+    el.style.background = ''; el.style.color = '';
   }
 }
 
 /* ──────────────────────────────────────────
    CURRENCY TOGGLE
 ────────────────────────────────────────── */
-function setCurrency(cur) {
-  currency = cur;
-  document.getElementById('tog-zar').classList.toggle('on', cur==='ZAR');
-  document.getElementById('tog-usd').classList.toggle('on', cur==='USD');
-
-  const p = CONFIG.PLANS[cur];
-  const sa = p.starter, pr = p.pro;
-
-  document.getElementById('starter-price').innerHTML =
-    (cur==='ZAR' ? '<sup>R</sup>' : '<sup>$</sup>') + sa.price.replace(/[R$]/,'');
-  document.getElementById('starter-curr').textContent = sa.note;
-  document.getElementById('pro-price').innerHTML =
-    (cur==='ZAR' ? '<sup>R</sup>' : '<sup>$</sup>') + pr.price.replace(/[R$]/,'');
-  document.getElementById('pro-curr').textContent = pr.note;
-
-  // Also update paywall inline prices
-  document.getElementById('pp-starter-price').textContent = sa.price;
-  document.getElementById('pp-starter-note').textContent  = sa.note;
-  document.getElementById('pp-pro-price').textContent     = pr.price;
-  document.getElementById('pp-pro-note').textContent      = pr.note;
-
-  document.getElementById('free-curr').textContent = cur === 'ZAR' ? 'ZAR · forever' : 'USD · forever';
-}
-
 function buyPlan(plan) {
+  if (!currentUser) { openAuth(); return; }
   selectedPlan = plan;
   document.getElementById('paywall').classList.remove('hide');
   document.getElementById('paywall').scrollIntoView({behavior:'smooth',block:'center'});
@@ -1102,7 +1272,7 @@ function buyPlan(plan) {
 }
 
 /* ──────────────────────────────────────────
-   PAYMENT
+   PAYMENT — PayFast only
 ────────────────────────────────────────── */
 function selectPlan(plan) {
   selectedPlan = plan;
@@ -1111,14 +1281,14 @@ function selectPlan(plan) {
 }
 
 function payFast() {
-  const p = CONFIG.PLANS['ZAR'][selectedPlan];
+  if (!currentUser) { closePaywall(); openAuth(); return; }
   const amount = selectedPlan === 'starter' ? '30.00' : '99.00';
   const item = selectedPlan === 'starter' ? 'ResumeAI SA Starter (3 CVs)' : 'ResumeAI SA Pro (30 days unlimited)';
 
   // Build PayFast form and submit
   const form = document.createElement('form');
   form.method = 'POST';
-  form.action = 'https://www.payfast.co.za/eng/process';
+  form.action = CONFIG.PAYFAST_URL;
 
   const fields = {
     merchant_id:    CONFIG.PAYFAST_MERCHANT_ID,
@@ -1128,7 +1298,9 @@ function payFast() {
     amount:         amount,
     item_name:      item,
     custom_str1:    selectedPlan,
-    custom_str2:    'v1'
+    custom_str2:    currentUser.id,      // ties this payment to the logged-in user
+    custom_str3:    currentUser.email,
+    custom_str4:    'v2'
   };
 
   Object.entries(fields).forEach(([k,v]) => {
@@ -1139,11 +1311,6 @@ function payFast() {
 
   document.body.appendChild(form);
   form.submit();
-}
-
-function payStripe() {
-  const url = selectedPlan === 'starter' ? CONFIG.STRIPE_STARTER : CONFIG.STRIPE_PRO;
-  window.open(url, '_blank');
 }
 
 function closePaywall() {
@@ -1184,6 +1351,7 @@ function removeFile() {
    PATH SELECTION
 ────────────────────────────────────────── */
 function selectPath(path) {
+  if (!currentUser) { openAuth(); return; }
   currentPath = path;
   document.getElementById('path-section').classList.add('hide');
   document.getElementById('credits-display').parentElement.classList.add('hide');
@@ -1375,6 +1543,7 @@ function validate(path) {
 ────────────────────────────────────────── */
 async function generate(path) {
   hideErrs();
+  if (!currentUser) { openAuth(); return; }
   if (!validate(path)) return;
 
   // Check credits — show paywall if out
@@ -1393,7 +1562,7 @@ async function generate(path) {
   try {
     const prompt = buildPrompt(path);
     const result = await callAI(prompt);
-    useCredit();
+    await useCredit();
     hideLoading();
     currentCV = result;
     document.getElementById('resume-doc').textContent = result;
@@ -1471,25 +1640,39 @@ function startOver() {
 
 /* ──────────────────────────────────────────
    PAYMENT SUCCESS — check URL param
+   ──────────────────────────────────────────
+   IMPORTANT: This only updates the on-screen
+   display after returning from PayFast. It is
+   NOT secure on its own — anyone could manually
+   visit yoursite.com/?payment=success without
+   paying. For real protection, you need a PayFast
+   ITN (Instant Transaction Notification) webhook —
+   a small backend function PayFast calls directly
+   after a real successful payment, which then
+   updates the `credits` column in Supabase for
+   that user. Ask Claude to help you build this
+   webhook once your PayFast account is approved
+   and live.
 ────────────────────────────────────────── */
 function checkPaymentReturn() {
   const params = new URLSearchParams(window.location.search);
   if (params.get('payment') === 'success') {
-    // In production: verify payment server-side via webhook
-    // For demo: grant credits based on stored plan
-    const plan = localStorage.getItem('resumeai_pending_plan') || 'starter';
-    setCredits(plan === 'pro' ? 999 : 3);
-    localStorage.removeItem('resumeai_pending_plan');
-    alert('✅ Payment successful! Your credits have been added. You can now build your CVs.');
+    alert('✅ Payment received! We are confirming it now — your credits will update shortly. If they don\'t appear within a few minutes, please contact support.');
     window.history.replaceState({}, '', window.location.pathname);
+    if (currentUser) refreshCreditsFromServer();
   }
 }
 
 /* ──────────────────────────────────────────
    INIT
 ────────────────────────────────────────── */
-updateCreditsDisplay();
-checkPaymentReturn();
+async function init() {
+  await checkExistingSession();
+  updateAccountPill();
+  updateCreditsDisplay();
+  checkPaymentReturn();
+}
+init();
 </script>
 
 <!-- ═══════════════════════════════════════════
