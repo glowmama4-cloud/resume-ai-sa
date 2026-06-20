@@ -611,11 +611,12 @@ const CONFIG = {
   API_ENDPOINT: '/api/generate',
   SUPABASE_URL: 'https://jrkesmwqpwrjqxufazvs.supabase.co',
   SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_JljqsXyZ1W1JYNlWDmBNog_TZcW9hcN',
-  PAYFAST_MERCHANT_ID:  'YOUR_PAYFAST_MERCHANT_ID',
-  PAYFAST_MERCHANT_KEY: 'YOUR_PAYFAST_MERCHANT_KEY',
+  PAYFAST_MERCHANT_ID:  '35795225',
+  PAYFAST_MERCHANT_KEY: 'wvkp7md8unncp',
   PAYFAST_URL: 'https://www.payfast.co.za/eng/process',
   PAYFAST_RETURN_URL:  window.location.origin + '/?payment=success',
   PAYFAST_CANCEL_URL:  window.location.origin + '/?payment=cancelled',
+  PAYFAST_NOTIFY_URL:  'https://resume-ai-sa.vercel.app/api/notify',
   PLANS: {
     starter: { price: 'R30', note: 'ZAR · one-time', cvs: 3 },
     pro:     { price: 'R99', note: 'ZAR · 30 days',  cvs: 999 }
@@ -839,6 +840,7 @@ function payFast() {
     merchant_key: CONFIG.PAYFAST_MERCHANT_KEY,
     return_url:   CONFIG.PAYFAST_RETURN_URL,
     cancel_url:   CONFIG.PAYFAST_CANCEL_URL,
+    notify_url:   CONFIG.PAYFAST_NOTIFY_URL,
     amount, item_name: item,
     custom_str1: selectedPlan,
     custom_str2: currentUser.id,
@@ -1070,9 +1072,13 @@ function startOver() {
 function checkPaymentReturn() {
   const params = new URLSearchParams(window.location.search);
   if (params.get('payment') === 'success') {
-    alert('✅ Payment received! Your credits will update shortly. If they don\'t appear within a few minutes, please contact support.');
+    const banner = document.createElement('div');
+    banner.style.cssText = 'position:fixed;top:70px;left:50%;transform:translateX(-50%);background:#007A4D;color:#fff;padding:14px 28px;border-radius:12px;font-weight:600;font-size:15px;z-index:9999;box-shadow:0 4px 20px rgba(0,122,77,.35);display:flex;align-items:center;gap:10px;white-space:nowrap;';
+    banner.innerHTML = '<span style="font-size:22px">✅</span> Payment successful! Your credits have been added.';
+    document.body.appendChild(banner);
+    setTimeout(() => banner.remove(), 6000);
     window.history.replaceState({}, '', window.location.pathname);
-    if (currentUser) refreshCreditsFromServer();
+    if (currentUser) setTimeout(refreshCreditsFromServer, 2000);
   }
 }
 
