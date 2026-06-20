@@ -370,10 +370,10 @@ footer a{color:var(--sa-green);text-decoration:none;}
     <div class="panel-title"><span class="ico">📎</span> Upload your existing CV</div>
     <div class="panel-sub">We'll read your CV and rewrite it into a polished, ATS-ready version.</div>
     <div class="upload-zone" id="upload-zone" onclick="document.getElementById('cv-file').click()">
-      <input type="file" id="cv-file" accept=".txt,.doc,.docx" onchange="handleFile(this)">
+      <input type="file" id="cv-file" accept=".txt,.docx" onchange="handleFile(this)">
       <div class="upload-icon">📁</div>
       <h3>Click to upload your CV</h3>
-      <p>Accepts .txt · .doc · .docx · max 5MB</p>
+      <p>Accepts .txt · .docx · max 5MB</p>
     </div>
     <div class="file-pill" id="file-pill">
       ✅ <span id="file-name-txt"></span>
@@ -875,10 +875,47 @@ function scrollToApp() {
 }
 
 /* ── FILE UPLOAD ── */
-function handleFile(input) {
+async function handleFile(input) {
   const file = input.files[0];
   if (!file) return;
   if (file.size > 5*1024*1024) { showErr('err-upload','File too large — please use a file under 5MB.'); return; }
+
+  const isDocx = /\.docx$/i.test(file.name);
+  const isDoc  = /\.doc$/i.test(file.name) && !isDocx;
+
+  if (isDocx) {
+    // .docx is a zip archive of XML — needs mammoth.js to extract real text.
+    // Reading it with readAsText() would produce garbled binary, not words.
+    try {
+      if (!window.mammoth) {
+        await new Promise((resolve, reject) => {
+          const s = document.createElement('script');
+          s.src = 'https://cdn.jsdelivr.net/npm/mammoth@1.7.0/mammoth.browser.min.js';
+          s.onload = resolve;
+          s.onerror = reject;
+          document.head.appendChild(s);
+        });
+      }
+      const arrayBuffer = await file.arrayBuffer();
+      const result = await window.mammoth.extractRawText({ arrayBuffer });
+      uploadedText = result.value;
+      if (!uploadedText.trim()) throw new Error('empty');
+      document.getElementById('file-name-txt').textContent = file.name;
+      document.getElementById('file-pill').classList.add('show');
+    } catch (err) {
+      console.error('DOCX read failed:', err);
+      showErr('err-upload', 'Could not read that Word file. Please try saving it as .txt and upload that instead.');
+    }
+    return;
+  }
+
+  if (isDoc) {
+    // Old binary .doc format can't be reliably parsed in-browser.
+    showErr('err-upload', 'Old .doc files are not supported yet — please open it in Word, "Save As" → .docx or .txt, then upload that.');
+    return;
+  }
+
+  // Plain .txt — safe to read directly
   const reader = new FileReader();
   reader.onload = e => {
     uploadedText = e.target.result;
