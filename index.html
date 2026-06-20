@@ -190,19 +190,7 @@ textarea{min-height:90px;}
 footer{text-align:center;padding:28px 20px;font-size:12px;color:var(--ink3);border-top:1px solid var(--border);margin-top:20px;}
 footer strong{color:var(--ink2);}
 footer a{color:var(--sa-green);text-decoration:none;}
-
-/* ── GUEST NOTICE BANNER ── */
-.guest-notice{
-  background:var(--gold-bg);
-  border:1px solid #f5d88a;
-  border-radius:var(--radius-sm);
-  padding:11px 16px;
-  font-size:13px;
-  color:var(--gold-txt);
-  margin-bottom:16px;
-  display:flex;align-items:center;gap:8px;
-  flex-wrap:wrap;
-}
+.guest-notice{background:var(--gold-bg);border:1px solid #f5d88a;border-radius:var(--radius-sm);padding:11px 16px;font-size:13px;color:var(--gold-txt);margin-bottom:16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
 .guest-notice a{color:var(--sa-green);font-weight:600;cursor:pointer;text-decoration:none;}
 </style>
 </head>
@@ -352,7 +340,7 @@ footer a{color:var(--sa-green);text-decoration:none;}
     <a href="#pricing" style="font-size:12px;color:var(--sa-green);">Get more →</a>
   </div>
 
-  <!-- PATH SELECTION — no login required -->
+  <!-- PATH SELECTION -->
   <div id="path-section">
     <div style="font-size:17px;font-weight:600;margin-bottom:14px;">Choose your path:</div>
     <div class="path-grid">
@@ -573,7 +561,7 @@ footer a{color:var(--sa-green);text-decoration:none;}
       <div class="out-btns">
         <button class="obt" id="copy-btn" onclick="copyCV()">📋 Copy</button>
         <button class="obt" onclick="printCV()">🖨 Print</button>
-        <button class="obt grn" onclick="downloadCV()">⬇ Download .txt</button>
+        <button class="obt grn" id="download-btn" onclick="downloadCV()">⬇ Download Word (.docx)</button>
       </div>
     </div>
     <div class="resume-doc" id="resume-doc"></div>
@@ -581,7 +569,7 @@ footer a{color:var(--sa-green);text-decoration:none;}
       <strong>Where to apply now:</strong><br>
       🇿🇦 SA jobs: <a href="https://www.pnet.co.za" target="_blank">PNet</a>, <a href="https://www.careers24.com" target="_blank">Careers24</a>, <a href="https://za.indeed.com" target="_blank">Indeed SA</a>, <a href="https://www.linkedin.com/jobs" target="_blank">LinkedIn</a><br>
       🌍 Remote &amp; global: <a href="https://www.linkedin.com/jobs/remote-jobs" target="_blank">LinkedIn Remote</a>, <a href="https://remotive.com" target="_blank">Remotive</a>, <a href="https://www.upwork.com" target="_blank">Upwork</a>, <a href="https://remoteafrica.io" target="_blank">RemoteAfrica</a><br>
-      💡 <strong>Tip:</strong> Save as a Word doc or PDF before sending. Use your CV text + paste into any application form.
+      💡 <strong>Tip:</strong> Your CV downloads as a Word document — open it, save as PDF if needed, then attach to any job application.
     </div>
     <button class="back-btn" onclick="startOver()">← Build another CV</button>
   </div>
@@ -592,7 +580,7 @@ footer a{color:var(--sa-green);text-decoration:none;}
     <div class="how-grid">
       <div class="how-card"><div class="how-icon">📎</div><h4>Pick your path</h4><p>Upload old CV, first-time, or type your details</p></div>
       <div class="how-card"><div class="how-icon">🤖</div><h4>AI rewrites it</h4><p>ATS-friendly keywords, professional language, 60 seconds</p></div>
-      <div class="how-card"><div class="how-icon">⬇</div><h4>Download &amp; send</h4><p>Copy, print, or save — then start applying</p></div>
+      <div class="how-card"><div class="how-icon">⬇</div><h4>Download Word doc</h4><p>Gets a proper .docx file — ready to email to employers</p></div>
       <div class="how-card"><div class="how-icon">💼</div><h4>Get the interview</h4><p>Clean CV passes ATS and reaches real humans</p></div>
     </div>
   </div>
@@ -623,11 +611,10 @@ const CONFIG = {
   }
 };
 
-/* ── SUPABASE — new publishable key format ── */
+/* ── SUPABASE ── */
 let supabaseClient = null;
 function getSupabase() {
   if (supabaseClient) return supabaseClient;
-  // Support both old (eyJ) and new (sb_publishable) key formats
   try {
     supabaseClient = window.supabase
       ? window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_PUBLISHABLE_KEY)
@@ -646,8 +633,9 @@ let currentPath   = '';
 let selectedPlan  = 'starter';
 let loadTimer     = null;
 let currentUser   = null;
-let guestCredits  = 1;   // guests get 1 free CV without signing in
+let guestCredits  = 1;
 let serverCredits = 0;
+let creditsPollTimer = null;
 
 /* ── AUTH ── */
 function openAuth() {
@@ -780,6 +768,27 @@ async function refreshCreditsFromServer() {
   updateCreditsDisplay();
 }
 
+/* ── FIX 3: Poll for credits after payment — every 4s for 90s ── */
+function startCreditsPolling() {
+  if (!currentUser) return;
+  let attempts = 0;
+  const maxAttempts = 22; // 22 x 4s = 88s (~90s)
+  const initialCredits = serverCredits;
+
+  if (creditsPollTimer) clearInterval(creditsPollTimer);
+
+  creditsPollTimer = setInterval(async () => {
+    attempts++;
+    await refreshCreditsFromServer();
+
+    // Stop polling if credits went up (payment processed) or time is up
+    if (serverCredits > initialCredits || attempts >= maxAttempts) {
+      clearInterval(creditsPollTimer);
+      creditsPollTimer = null;
+    }
+  }, 4000);
+}
+
 function getCredits() {
   return currentUser ? serverCredits : guestCredits;
 }
@@ -886,7 +895,7 @@ function removeFile() {
   document.getElementById('file-pill').classList.remove('show');
 }
 
-/* ── PATH SELECTION — open to all, no login required ── */
+/* ── PATH SELECTION ── */
 function selectPath(path) {
   currentPath = path;
   document.getElementById('path-section').classList.add('hide');
@@ -941,7 +950,7 @@ function buildPrompt(path) {
   const formatNote = isGlobal
     ? 'Format this as an INTERNATIONAL RESUME suitable for global job applications and remote work. Use universal terminology. Keep it to 1–2 pages.'
     : 'Format this as a SOUTH AFRICAN CV. Use South African English and conventions. Include all standard SA CV sections.';
-  const base = `You are a professional CV writer. ${formatNote}\n\nRules:\n- NO tables, columns, graphics, or special characters\n- CAPITALS for section headings\n- Dash bullet points\n- Include relevant ATS keywords for the target job and industry\n- Use strong action verbs for achievements\n- Be honest — only use information provided\n- Make it ready to submit to employers immediately`;
+  const base = `You are a professional CV writer. ${formatNote}\n\nRules:\n- NO tables, columns, graphics, or special characters\n- CAPITALS for section headings\n- Dash bullet points\n- Include relevant ATS keywords for the target job and industry\n- Use strong action verbs for achievements\n- Be honest — only use information provided\n- Make it ready to submit to employers immediately\n- Write the COMPLETE CV — do not cut off or truncate. Include every section fully.`;
 
   if (path === 'upload') {
     const name=document.getElementById('u-name').value.trim(), job=document.getElementById('u-job').value.trim(), extra=document.getElementById('u-extra').value.trim();
@@ -984,11 +993,9 @@ async function generate(path) {
   hideErrs();
   if (!validate(path)) return;
 
-  // If no credits, prompt to sign in (guest) or show paywall (logged in)
   if (getCredits() <= 0) {
-    if (!currentUser) {
-      openAuth();
-    } else {
+    if (!currentUser) { openAuth(); }
+    else {
       document.getElementById('paywall').classList.remove('hide');
       document.getElementById('paywall').scrollIntoView({behavior:'smooth',block:'center'});
     }
@@ -1048,18 +1055,130 @@ function printCV() {
   w.document.close(); w.focus(); w.print();
 }
 
-function downloadCV() {
-  const rawName = (
-    document.getElementById('m-name').value ||
-    document.getElementById('u-name').value ||
-    document.getElementById('f-name').value || 'My_CV'
-  ).trim().replace(/\s+/g,'_');
-  const blob = new Blob([currentCV],{type:'text/plain;charset=utf-8'});
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href=url; a.download=rawName+'_CV.txt';
-  document.body.appendChild(a); a.click();
-  document.body.removeChild(a); URL.revokeObjectURL(url);
+/* ── FIX 1: Download as proper Word .docx using docx library ── */
+async function downloadCV() {
+  const btn = document.getElementById('download-btn');
+  btn.textContent = '⏳ Generating Word doc...';
+  btn.disabled = true;
+
+  try {
+    // Load docx library from CDN if not already loaded
+    if (!window.docx) {
+      await new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.min.js';
+        s.onload = resolve;
+        s.onerror = reject;
+        document.head.appendChild(s);
+      });
+    }
+
+    const { Document, Packer, Paragraph, TextRun, AlignmentType, HeadingLevel, BorderStyle } = window.docx;
+
+    // Parse the CV text into structured paragraphs
+    const lines = currentCV.split('\n');
+    const children = [];
+    let isFirstLine = true;
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const trimmed = line.trim();
+
+      if (trimmed === '') {
+        // Empty line — add spacing paragraph
+        children.push(new Paragraph({ children: [new TextRun('')], spacing: { after: 60 } }));
+        continue;
+      }
+
+      if (isFirstLine && trimmed.length > 0) {
+        // First non-empty line = person's name (large, bold, SA green)
+        children.push(new Paragraph({
+          children: [new TextRun({ text: trimmed, bold: true, size: 36, color: '007A4D', font: 'Arial' })],
+          spacing: { after: 80 }
+        }));
+        isFirstLine = false;
+        continue;
+      }
+
+      // Detect section headings (ALL CAPS lines, at least 4 chars)
+      const isHeading = trimmed === trimmed.toUpperCase() && trimmed.length >= 4 && /[A-Z]/.test(trimmed);
+
+      if (isHeading) {
+        // Add a thin green line above section headings
+        children.push(new Paragraph({
+          children: [new TextRun({ text: trimmed, bold: true, size: 24, color: '007A4D', font: 'Arial' })],
+          spacing: { before: 200, after: 80 },
+          border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: '007A4D', space: 1 } }
+        }));
+        continue;
+      }
+
+      // Bullet point lines (starting with - or •)
+      if (trimmed.startsWith('- ') || trimmed.startsWith('• ')) {
+        const bulletText = trimmed.replace(/^[-•]\s+/, '');
+        children.push(new Paragraph({
+          children: [new TextRun({ text: bulletText, size: 22, font: 'Arial', color: '2d2d2d' })],
+          bullet: { level: 0 },
+          spacing: { after: 40 }
+        }));
+        continue;
+      }
+
+      // Regular line
+      children.push(new Paragraph({
+        children: [new TextRun({ text: trimmed, size: 22, font: 'Arial', color: '2d2d2d' })],
+        spacing: { after: 40 }
+      }));
+    }
+
+    const doc = new Document({
+      sections: [{
+        properties: {
+          page: {
+            margin: { top: 1080, right: 1080, bottom: 1080, left: 1080 }
+          }
+        },
+        children
+      }]
+    });
+
+    const buffer = await Packer.toBlob(doc);
+
+    // Get person's name for filename
+    const rawName = (
+      document.getElementById('m-name').value ||
+      document.getElementById('u-name').value ||
+      document.getElementById('f-name').value || 'My_CV'
+    ).trim().replace(/\s+/g, '_');
+
+    const url = URL.createObjectURL(buffer);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = rawName + '_CV.docx';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+  } catch(err) {
+    console.error('DOCX generation failed:', err);
+    // Fallback: download as .txt if docx fails
+    alert('Word download failed — downloading as text file instead.');
+    const rawName = (
+      document.getElementById('m-name').value ||
+      document.getElementById('u-name').value ||
+      document.getElementById('f-name').value || 'My_CV'
+    ).trim().replace(/\s+/g, '_');
+    const blob = new Blob([currentCV], {type:'text/plain;charset=utf-8'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = rawName + '_CV.txt';
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a); URL.revokeObjectURL(url);
+  } finally {
+    btn.textContent = '⬇ Download Word (.docx)';
+    btn.disabled = false;
+  }
 }
 
 function startOver() {
@@ -1068,23 +1187,44 @@ function startOver() {
   window.scrollTo({top:document.getElementById('app-section').offsetTop - 70, behavior:'smooth'});
 }
 
-/* ── PAYMENT RETURN ── */
+/* ── PAYMENT RETURN — FIX: starts polling after successful payment ── */
 function checkPaymentReturn() {
   const params = new URLSearchParams(window.location.search);
   if (params.get('payment') === 'success') {
     const banner = document.createElement('div');
     banner.style.cssText = 'position:fixed;top:70px;left:50%;transform:translateX(-50%);background:#007A4D;color:#fff;padding:14px 28px;border-radius:12px;font-weight:600;font-size:15px;z-index:9999;box-shadow:0 4px 20px rgba(0,122,77,.35);display:flex;align-items:center;gap:10px;white-space:nowrap;';
-    banner.innerHTML = '<span style="font-size:22px">✅</span> Payment successful! Your credits have been added.';
+    banner.innerHTML = '<span style="font-size:22px">✅</span> Payment successful! Checking your credits...';
     document.body.appendChild(banner);
-    setTimeout(() => banner.remove(), 6000);
+
     window.history.replaceState({}, '', window.location.pathname);
-    if (currentUser) setTimeout(refreshCreditsFromServer, 2000);
+
+    if (currentUser) {
+      // Start polling — update banner when credits arrive
+      startCreditsPolling();
+
+      // Update banner once credits are confirmed
+      const checkInterval = setInterval(() => {
+        const c = getCredits();
+        if (c > 0) {
+          banner.innerHTML = '<span style="font-size:22px">✅</span> Payment confirmed! You have ' + c + ' CV' + (c===1?'':'s') + ' ready to use.';
+          clearInterval(checkInterval);
+          setTimeout(() => banner.remove(), 5000);
+        }
+      }, 1000);
+
+      // Remove banner after 30s max regardless
+      setTimeout(() => {
+        banner.remove();
+        clearInterval(checkInterval);
+      }, 30000);
+    } else {
+      setTimeout(() => banner.remove(), 6000);
+    }
   }
 }
 
 /* ── INIT ── */
 async function init() {
-  // Load Supabase JS from CDN then initialise
   if (!window.supabase) {
     await new Promise((resolve, reject) => {
       const s = document.createElement('script');
