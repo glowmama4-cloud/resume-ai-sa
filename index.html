@@ -186,16 +186,16 @@ textarea{min-height:90px;}
 .obt:hover{border-color:var(--ink);color:var(--ink);}
 .obt.grn{background:var(--sa-green);color:#fff;border-color:var(--sa-green);}
 .obt.grn:hover{background:var(--sa-green-d);}
-.resume-doc{background:var(--surf);border:1px solid var(--border);border-radius:var(--radius);padding:36px;font-size:14px;line-height:1.85;font-family:'Sora',sans-serif;box-shadow:var(--shadow);outline:none;}
+.resume-doc{background:var(--surf);border:1px solid var(--border);border-radius:var(--radius);padding:36px;font-size:14px;line-height:1.85;font-family:'Sora',sans-serif;box-shadow:var(--shadow);outline:none;color:#16161a;}
 .resume-doc:focus{border-color:var(--sa-green);box-shadow:0 0 0 3px rgba(0,122,77,.1);}
-.resume-doc h1{font-size:20px;font-weight:700;color:var(--ink);margin-bottom:10px;letter-spacing:.3px;}
-.resume-doc h2{font-size:14px;font-weight:700;color:var(--sa-green);text-transform:uppercase;letter-spacing:.6px;margin:20px 0 10px;padding-bottom:6px;border-bottom:1.5px solid #c8f0db;}
+.resume-doc h1{font-size:20px;font-weight:700;color:#16161a;margin-bottom:10px;letter-spacing:.3px;}
+.resume-doc h2{font-size:14px;font-weight:700;color:#16161a;text-transform:uppercase;letter-spacing:.6px;margin:20px 0 10px;padding-bottom:6px;border-bottom:1.5px solid #16161a;}
 .resume-doc h2:first-of-type{margin-top:0;}
 .resume-doc p{margin-bottom:8px;}
 .resume-doc ul{margin:0 0 10px 0;padding-left:20px;}
 .resume-doc li{margin-bottom:5px;}
-.resume-doc strong{color:var(--ink);font-weight:600;}
-.resume-doc .contact-line{font-size:13px;color:var(--ink2);margin-bottom:3px;}
+.resume-doc strong{color:#16161a;font-weight:600;}
+.resume-doc .contact-line{font-size:13px;color:#4a4a6a;margin-bottom:3px;}
 .edit-hint{font-size:12px;color:var(--ink3);margin-bottom:10px;display:flex;align-items:center;gap:6px;}
 .edit-hint strong{color:var(--ink2);}
 .next-steps{background:var(--surf2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px 16px;font-size:13px;color:var(--ink2);margin-top:16px;}
@@ -604,6 +604,7 @@ footer a{color:var(--sa-green);text-decoration:none;}
       </div>
     </div>
     <div class="edit-hint">✏️ <strong>Tip:</strong> Click anywhere in your CV below to fix a typo, add a detail, or tweak the wording — your changes are saved automatically when you download.</div>
+    <div class="ats-box hide" id="missing-info-notice" style="border-left-color:var(--sa-red);margin-bottom:14px;"></div>
     <div class="resume-doc" id="resume-doc" contenteditable="true" oninput="onCVEdited()"></div>
     <div class="next-steps">
       <strong>Where to apply now:</strong><br>
@@ -927,13 +928,10 @@ async function handleFile(input) {
   if (isDocx) {
     try {
       if (!window.mammoth) {
-        await new Promise((resolve, reject) => {
-          const s = document.createElement('script');
-          s.src = 'https://cdn.jsdelivr.net/npm/mammoth@1.7.0/mammoth.browser.min.js';
-          s.onload = resolve;
-          s.onerror = reject;
-          document.head.appendChild(s);
-        });
+        await loadScriptWithFallback([
+          'https://cdn.jsdelivr.net/npm/mammoth@1.7.0/mammoth.browser.min.js',
+          'https://unpkg.com/mammoth@1.7.0/mammoth.browser.min.js'
+        ], () => !!window.mammoth);
       }
       const arrayBuffer = await file.arrayBuffer();
       const result = await window.mammoth.extractRawText({ arrayBuffer });
@@ -1034,7 +1032,8 @@ CRITICAL RULES — follow every one without exception:
 - Include relevant ATS keywords for the target job and industry
 - Use strong action verbs for achievements
 - ONLY use information that has been provided to you — do not invent jobs, qualifications, or details
-- NEVER write placeholder text such as [Insert...], [Note:...], [Add...], or any square-bracket instructions — if a piece of information was not provided, simply omit that section or field entirely
+- ABSOLUTE RULE — NO PLACEHOLDERS: If a fact (a qualification, institution, date, certificate, job title, etc.) was not given to you, you must DELETE that entire bullet point or section header — do not write it with a placeholder. Never output text like "[Insert Qualification Title]", "[Insert Institution Name]", "[Note: Please provide...]", "[List any...]", or any text containing square brackets. If the EDUCATION section has no real information provided, omit the whole EDUCATION heading and its contents — do not write the heading with placeholder bullets underneath it. The same applies to every other section: a section either has real, provided facts in it, or it does not appear in the CV at all.
+- Before finishing, re-read your own output and confirm there is not a single square bracket "[" anywhere in the document — if there is, remove that line entirely.
 - Write the COMPLETE CV from top to bottom — do not truncate, do not cut off mid-section, do not summarise with "etc." — every section must be fully written out
 - The CV must be ready to submit to an employer immediately — no editing required from the user`;
 
@@ -1169,6 +1168,34 @@ function validate(path) {
    styled, EDITABLE HTML for the on-screen preview — and can convert it straight
    back to plain text (reading from the live DOM) for Word/PDF export, so any
    edits the user makes on screen are automatically included in the download. */
+/* ── RESILIENT SCRIPT LOADER ──
+   Tries multiple CDN mirrors in order before giving up. This prevents a
+   single blocked/slow CDN (ad-blocker, firewall, temporary outage) from
+   causing a misleading "check your internet connection" error when the
+   person's connection is actually fine. */
+function loadScriptWithFallback(urls, checkLoaded) {
+  return new Promise((resolve, reject) => {
+    if (checkLoaded()) { resolve(); return; }
+    let i = 0;
+    function tryNext() {
+      if (i >= urls.length) {
+        reject(new Error('Could not load a required tool from any source. Please check your internet connection or try disabling browser extensions (like ad-blockers) that may be blocking scripts.'));
+        return;
+      }
+      const url = urls[i++];
+      const s = document.createElement('script');
+      s.src = url;
+      s.onload = () => {
+        if (checkLoaded()) resolve();
+        else tryNext();
+      };
+      s.onerror = tryNext;
+      document.head.appendChild(s);
+    }
+    tryNext();
+  });
+}
+
 function escapeHTML(s) {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
@@ -1255,6 +1282,71 @@ function onCVEdited() {
   if (badge && currentUser) badge.textContent = '✏️ Edited — download to keep your changes';
 }
 
+/* Safety net: even with strong prompt instructions, the AI occasionally
+   leaves a placeholder line like "[Insert Qualification Title]" when a
+   field was left blank. This strips any such line, then removes any
+   section heading that ends up with nothing real underneath it, so the
+   final CV never shows bracketed instructions to an employer. */
+function stripPlaceholders(rawText) {
+  let lines = rawText.replace(/\r\n/g, '\n').split('\n').filter(line => !/\[.*\]/.test(line));
+  const removedHeadings = [];
+
+  // A "heading-like" line for this cleanup pass also includes Title Case
+  // sub-headers ending in a colon (e.g. "Professional Certifications (if
+  // applicable):"), which the AI sometimes uses as a label for a bullet
+  // group, not just full CAPS section titles.
+  function isHeaderLine(t) {
+    return looksLikeHeading(t) || /:$/.test(t.trim());
+  }
+
+  // Repeat the "remove empty headings" pass until nothing changes, so a
+  // heading that only becomes empty after a nested label was removed
+  // (e.g. EDUCATION -> sub-label -> placeholder bullets, all stripped)
+  // is also removed, instead of leaving an orphaned heading behind.
+  let changed = true;
+  while (changed) {
+    changed = false;
+    const out = [];
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const t = line.trim();
+      if (t && (t === '--' || t === '-')) { changed = true; continue; }
+      if (t && isHeaderLine(t)) {
+        let hasContent = false;
+        for (let j = i + 1; j < lines.length; j++) {
+          const nt = lines[j].trim();
+          if (nt && isHeaderLine(nt)) break;
+          if (nt && nt !== '--' && nt !== '-') { hasContent = true; break; }
+        }
+        if (!hasContent) {
+          if (looksLikeHeading(t)) removedHeadings.push(t);
+          changed = true; continue;
+        }
+      }
+      out.push(line);
+    }
+    lines = out;
+  }
+
+  return { text: lines.join('\n').replace(/\n{3,}/g, '\n\n').trim(), removedHeadings };
+}
+
+function showMissingInfoNotice(removedHeadings) {
+  const el = document.getElementById('missing-info-notice');
+  if (!el) return;
+  if (!removedHeadings || removedHeadings.length === 0) {
+    el.classList.add('hide');
+    el.innerHTML = '';
+    return;
+  }
+  const list = removedHeadings.map(h => `<li>${escapeHTML(h)}</li>`).join('');
+  el.innerHTML = `<h4>💡 A couple of sections were left out</h4>
+    <p style="margin-bottom:6px;">We didn't have enough information to write these properly, so we left them out rather than guess or use placeholder text:</p>
+    <ul>${list}</ul>
+    <p style="margin-top:6px;">If you'd like to add them, click into your CV below and type the details yourself — or build another CV and fill in those fields.</p>`;
+  el.classList.remove('hide');
+}
+
 /* ── GENERATE ── */
 async function generate(path) {
   hideErrs();
@@ -1275,11 +1367,13 @@ async function generate(path) {
 
   try {
     const prompt = buildPrompt(path);
-    const result = await callAI(prompt);
+    const rawResult = await callAI(prompt);
+    const { text: result, removedHeadings } = stripPlaceholders(rawResult);
     await useCredit();
     hideLoading();
     currentCV = result;
     document.getElementById('resume-doc').innerHTML = renderCVAsHTML(result);
+    showMissingInfoNotice(removedHeadings);
     document.getElementById('output-section').style.display = 'block';
     document.getElementById('output-section').scrollIntoView({behavior:'smooth',block:'start'});
     saveCVToHistory(path, result);
@@ -1420,8 +1514,10 @@ function viewHistoryCV(index) {
   const cv = window._historyCVs && window._historyCVs[index];
   if (!cv) return;
   closeHistory();
-  currentCV = cv.cv_text;
-  document.getElementById('resume-doc').innerHTML = renderCVAsHTML(cv.cv_text);
+  const { text: cleaned, removedHeadings } = stripPlaceholders(cv.cv_text);
+  currentCV = cleaned;
+  document.getElementById('resume-doc').innerHTML = renderCVAsHTML(cleaned);
+  showMissingInfoNotice(removedHeadings);
   document.getElementById('output-section').style.display = 'block';
   document.getElementById('path-section').classList.add('hide');
   document.getElementById('output-section').scrollIntoView({behavior:'smooth', block:'start'});
@@ -1430,7 +1526,7 @@ function viewHistoryCV(index) {
 function downloadHistoryCV(index) {
   const cv = window._historyCVs && window._historyCVs[index];
   if (!cv) return;
-  currentCV = cv.cv_text;
+  currentCV = stripPlaceholders(cv.cv_text).text;
   downloadCV();
 }
 
@@ -1451,7 +1547,7 @@ function printCV() {
     <html><head><title>CV</title><style>
       body{font-family:Arial,sans-serif;font-size:13px;line-height:1.7;padding:40px;max-width:800px;margin:0 auto;color:#16161a;}
       h1{font-size:19px;margin-bottom:8px;}
-      h2{font-size:13px;text-transform:uppercase;letter-spacing:.5px;color:#005C39;border-bottom:1px solid #c8f0db;padding-bottom:5px;margin:18px 0 8px;}
+      h2{font-size:13px;text-transform:uppercase;letter-spacing:.5px;color:#16161a;border-bottom:1px solid #16161a;padding-bottom:5px;margin:18px 0 8px;}
       h2:first-of-type{margin-top:0;}
       p{margin-bottom:6px;} ul{padding-left:20px;margin-bottom:8px;} li{margin-bottom:4px;}
       .contact-line{color:#4a4a6a;font-size:12px;}
@@ -1470,12 +1566,10 @@ async function downloadCV() {
   currentCV = extractPlainTextFromPreview();
   try {
     if (!window.docx) {
-      await new Promise((resolve, reject) => {
-        const s = document.createElement('script');
-        s.src = 'https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.js';
-        s.onload = resolve; s.onerror = () => reject(new Error('Could not load the document tool. Check your internet connection.'));
-        document.head.appendChild(s);
-      });
+      await loadScriptWithFallback([
+        'https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.js',
+        'https://unpkg.com/docx@8.5.0/build/index.js'
+      ], () => !!window.docx);
     }
     const { Document, Packer, Paragraph, TextRun } = window.docx;
     const lines = currentCV.split('\n');
@@ -1485,9 +1579,9 @@ async function downloadCV() {
       if (!trimmed) { children.push(new Paragraph({ text: '' })); continue; }
       if (trimmed === trimmed.toUpperCase() && trimmed.length > 2 && !/^[-•]/.test(trimmed)) {
         children.push(new Paragraph({
-          children: [new TextRun({ text: trimmed, bold: true, size: 26, color: '007A4D' })],
+          children: [new TextRun({ text: trimmed, bold: true, size: 26, color: '16161A' })],
           spacing: { before: 240, after: 80 },
-          border: { bottom: { color: 'C8F0DB', size: 6, space: 4, value: 'single' } }
+          border: { bottom: { color: '16161A', size: 6, space: 4, value: 'single' } }
         }));
       } else if (/^[-•]/.test(trimmed)) {
         children.push(new Paragraph({
@@ -1527,12 +1621,10 @@ async function downloadPDF() {
   currentCV = extractPlainTextFromPreview();
   try {
     if (!window.jspdf) {
-      await new Promise((resolve, reject) => {
-        const s = document.createElement('script');
-        s.src = 'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js';
-        s.onload = resolve; s.onerror = () => reject(new Error('Could not load the PDF tool. Check your internet connection.'));
-        document.head.appendChild(s);
-      });
+      await loadScriptWithFallback([
+        'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js',
+        'https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js'
+      ], () => !!window.jspdf);
     }
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ unit: 'pt', format: 'a4' });
@@ -1555,10 +1647,10 @@ async function downloadPDF() {
       if (isHeading) {
         ensureSpace(2);
         y += 8;
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(0, 122, 77);
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(22, 22, 26);
         doc.text(trimmed, marginX, y);
         y += 4;
-        doc.setDrawColor(200, 240, 219); doc.setLineWidth(1);
+        doc.setDrawColor(22, 22, 26); doc.setLineWidth(1);
         doc.line(marginX, y, marginX + maxWidth, y);
         y += 14;
         doc.setTextColor(22, 22, 26);
@@ -1591,6 +1683,7 @@ function startOver() {
   ['upload','first','manual'].forEach(p => document.getElementById('panel-'+p).classList.add('hide'));
   document.getElementById('cv-file').value = '';
   document.getElementById('file-pill').classList.remove('show');
+  showMissingInfoNotice(null);
   updateGuestNotice();
   document.getElementById('app-section').scrollIntoView({behavior:'smooth', block:'start'});
 }
