@@ -1321,7 +1321,13 @@ function onCVEdited() {
    section heading that ends up with nothing real underneath it, so the
    final CV never shows bracketed instructions to an employer. */
 function stripPlaceholders(rawText) {
-  let lines = rawText.replace(/\r\n/g, '\n').split('\n').filter(line => !/\[.*\]/.test(line));
+  // First clean any markdown formatting the AI sometimes outputs
+  const cleaned = rawText
+    .replace(/^#{1,3}\s*/gm, '')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1');
+
+  let lines = cleaned.replace(/\r\n/g, '\n').split('\n').filter(line => !/\[.*\]/.test(line));
   const removedHeadings = [];
 
   // A "heading-like" line for this cleanup pass also includes Title Case
@@ -1591,49 +1597,70 @@ function printCV() {
   setTimeout(() => win.print(), 300);
 }
 
-/* Builds the DOCX. Throws on failure instead of silently saving a .txt —
-   the user gets a clear, honest error and can simply try again. */
-async function downloadCV() {
+/* Builds a real RTF file — opens perfectly in Microsoft Word, LibreOffice,
+   and Google Docs with NO external library needed. Works in every browser. */
+function downloadCV() {
   const btn = document.getElementById('download-docx-btn');
   if (btn) { btn.textContent = '⏳ Preparing...'; btn.disabled = true; }
-  currentCV = extractPlainTextFromPreview();
   try {
-    if (!window.docx) throw new Error('Word library not loaded. Please refresh the page and try again.');
-    const { Document, Packer, Paragraph, TextRun } = window.docx;
-    const lines = currentCV.split('\n');
-    const children = [];
+    const text = extractPlainTextFromPreview();
+    const lines = text.split('\n');
+
+    // RTF escape: special chars
+    function rtfEsc(s) {
+      return s
+        .replace(/\\/g, '\\\\')
+        .replace(/\{/g, '\\{')
+        .replace(/\}/g, '\\}')
+        .replace(/[^\x00-\x7F]/g, c => {
+          const code = c.charCodeAt(0);
+          return code < 256 ? `\\'${code.toString(16).padStart(2,'0')}` : `\\u${code}?`;
+        });
+    }
+
+    let rtf = '{\\rtf1\\ansi\\deff0\n';
+    rtf += '{\\fonttbl{\\f0\\fswiss\\fcharset0 Arial;}}\n';
+    rtf += '{\\colortbl;\\red22\\green22\\blue26;}\n';
+    rtf += '\\paperw11906\\paperh16838\\margl1440\\margr1440\\margt1440\\margb1440\n';
+
     for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed) { children.push(new Paragraph({ text: '' })); continue; }
-      if (trimmed === trimmed.toUpperCase() && trimmed.length > 2 && !/^[-•]/.test(trimmed)) {
-        children.push(new Paragraph({
-          children: [new TextRun({ text: trimmed, bold: true, size: 26, color: '16161A' })],
-          spacing: { before: 240, after: 80 },
-          border: { bottom: { color: '16161A', size: 6, space: 4, value: 'single' } }
-        }));
-      } else if (/^[-•]/.test(trimmed)) {
-        children.push(new Paragraph({
-          children: [new TextRun({ text: trimmed.replace(/^[-•]\s*/, ''), size: 22 })],
-          bullet: { level: 0 }, spacing: { after: 40 }
-        }));
+      const t = line.trim();
+      if (!t) { rtf += '\\par\n'; continue; }
+
+      // Clean markdown symbols the AI sometimes outputs
+      const clean = t
+        .replace(/^#{1,3}\s*/, '')
+        .replace(/\*\*([^*]+)\*\*/g, '$1')
+        .replace(/\*([^*]+)\*/g, '$1');
+
+      const isHeading = clean === clean.toUpperCase() && clean.length > 2 && !/^[-•]/.test(clean);
+      const isBullet  = /^[-•]/.test(clean);
+
+      if (isHeading) {
+        rtf += `\\pard\\sb240\\sa80\\b\\fs24 ${rtfEsc(clean)}\\b0\\par\n`;
+        rtf += `\\pard\\brdrb\\brdrs\\brdrw10\\brdrsp40\\sb0\\sa80\\par\n`;
+      } else if (isBullet) {
+        const bulletText = clean.replace(/^[-•]\s*/, '');
+        rtf += `\\pard\\li360\\fi-180\\sa60\\fs22 \\'b7  ${rtfEsc(bulletText)}\\par\n`;
       } else {
-        children.push(new Paragraph({
-          children: [new TextRun({ text: trimmed, size: 22 })],
-          spacing: { after: 60 }
-        }));
+        rtf += `\\pard\\sa60\\fs22 ${rtfEsc(clean)}\\par\n`;
       }
     }
-    const doc = new Document({
-      sections: [{ properties: { page: { margin: { top: 720, right: 900, bottom: 720, left: 900 } } }, children }]
-    });
-    const blob = await Packer.toBlob(doc);
+
+    rtf += '}';
+
+    const blob = new Blob([rtf], { type: 'application/rtf' });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
-    a.href = url; a.download = 'ResumeAI_SA_CV.docx'; a.click();
+    a.href = url;
+    a.download = 'ResumeAI_SA_CV.doc';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
     URL.revokeObjectURL(url);
   } catch(e) {
     console.error('Word download error:', e);
-    alert('⚠️ Could not create the Word file: ' + (e.message || 'please try again') + '\n\nYou can also try "Download PDF" instead.');
+    alert('⚠️ Could not create the Word file. Please try "Download PDF" instead.');
   } finally {
     if (btn) { btn.textContent = '⬇ Word (.docx)'; btn.disabled = false; }
   }
@@ -1666,7 +1693,11 @@ async function downloadPDF() {
 
     const lines = currentCV.split('\n');
     lines.forEach(raw => {
-      const trimmed = raw.trim();
+      // Clean any markdown symbols the AI outputs
+      const trimmed = raw.trim()
+        .replace(/^#{1,3}\s*/, '')
+        .replace(/\*\*([^*]+)\*\*/g, '$1')
+        .replace(/\*([^*]+)\*/g, '$1');
       if (!trimmed) { y += 8; return; }
 
       const isHeading = trimmed === trimmed.toUpperCase() && trimmed.length > 2 && !/^[-•]/.test(trimmed);
