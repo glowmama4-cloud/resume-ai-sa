@@ -798,11 +798,11 @@ async function refreshCreditsFromServer() {
   updateCreditsDisplay();
 }
 
-/* ── FIX 3: Poll for credits after payment — every 4s for 90s ── */
+/* ── Poll for credits after payment — every 4s for 90s ── */
 function startCreditsPolling() {
   if (!currentUser) return;
   let attempts = 0;
-  const maxAttempts = 22; // 22 x 4s = 88s (~90s)
+  const maxAttempts = 22;
   const initialCredits = serverCredits;
 
   if (creditsPollTimer) clearInterval(creditsPollTimer);
@@ -810,8 +810,6 @@ function startCreditsPolling() {
   creditsPollTimer = setInterval(async () => {
     attempts++;
     await refreshCreditsFromServer();
-
-    // Stop polling if credits went up (payment processed) or time is up
     if (serverCredits > initialCredits || attempts >= maxAttempts) {
       clearInterval(creditsPollTimer);
       creditsPollTimer = null;
@@ -914,8 +912,6 @@ async function handleFile(input) {
   const isDoc  = /\.doc$/i.test(file.name) && !isDocx;
 
   if (isDocx) {
-    // .docx is a zip archive of XML — needs mammoth.js to extract real text.
-    // Reading it with readAsText() would produce garbled binary, not words.
     try {
       if (!window.mammoth) {
         await new Promise((resolve, reject) => {
@@ -940,12 +936,10 @@ async function handleFile(input) {
   }
 
   if (isDoc) {
-    // Old binary .doc format can't be reliably parsed in-browser.
     showErr('err-upload', 'Old .doc files are not supported yet — please open it in Word, "Save As" → .docx or .txt, then upload that.');
     return;
   }
 
-  // Plain .txt — safe to read directly
   const reader = new FileReader();
   reader.onload = e => {
     uploadedText = e.target.result;
@@ -1010,25 +1004,130 @@ function hideLoading() {
   document.getElementById('loading-card').style.display = 'none';
 }
 
-/* ── BUILD PROMPTS ── */
+/* ══════════════════════════════════════════════════════
+   FIX 1 — buildPrompt: hard rule against placeholder text.
+   If a section has no info, omit it entirely. Never write
+   [Insert...] or [Note:...] brackets in the output.
+══════════════════════════════════════════════════════ */
 function buildPrompt(path) {
   const fmtEl = document.getElementById(path[0]+'-format');
   const isGlobal = fmtEl && fmtEl.value === 'global';
   const formatNote = isGlobal
     ? 'Format this as an INTERNATIONAL RESUME suitable for global job applications and remote work. Use universal terminology. Keep it to 1–2 pages.'
     : 'Format this as a SOUTH AFRICAN CV. Use South African English and conventions. Include all standard SA CV sections.';
-  const base = `You are a professional CV writer. ${formatNote}\n\nRules:\n- NO tables, columns, graphics, or special characters\n- CAPITALS for section headings\n- Dash bullet points\n- Include relevant ATS keywords for the target job and industry\n- Use strong action verbs for achievements\n- Be honest — only use information provided\n- Make it ready to submit to employers immediately\n- Write the COMPLETE CV — do not cut off or truncate. Include every section fully.`;
+
+  const base = `You are a professional CV writer. ${formatNote}
+
+CRITICAL RULES — follow every one without exception:
+- NO tables, columns, graphics, or special characters
+- CAPITALS for section headings
+- Dash bullet points for all lists
+- Include relevant ATS keywords for the target job and industry
+- Use strong action verbs for achievements
+- ONLY use information that has been provided to you — do not invent jobs, qualifications, or details
+- NEVER write placeholder text such as [Insert...], [Note:...], [Add...], or any square-bracket instructions — if a piece of information was not provided, simply omit that section or field entirely
+- Write the COMPLETE CV from top to bottom — do not truncate, do not cut off mid-section, do not summarise with "etc." — every section must be fully written out
+- The CV must be ready to submit to an employer immediately — no editing required from the user`;
 
   if (path === 'upload') {
-    const name=document.getElementById('u-name').value.trim(), job=document.getElementById('u-job').value.trim(), extra=document.getElementById('u-extra').value.trim();
-    return `${base}\n\nRewrite the existing CV below for: ${name} applying for ${job}.\nExtra info: ${extra||'None'}\n\nEXISTING CV:\n---\n${uploadedText}\n---\n\nWrite:\n1. Name and contact details\n2. PROFESSIONAL PROFILE\n3. KEY SKILLS\n4. WORK EXPERIENCE\n5. EDUCATION AND QUALIFICATIONS\n6. ADDITIONAL INFORMATION`;
+    const name  = document.getElementById('u-name').value.trim();
+    const job   = document.getElementById('u-job').value.trim();
+    const extra = document.getElementById('u-extra').value.trim();
+    return `${base}
+
+Task: Rewrite and improve the existing CV below for ${name}, who is applying for: ${job}.
+Extra information to incorporate: ${extra || 'None provided'}
+
+EXISTING CV TEXT:
+---
+${uploadedText}
+---
+
+Rewrite into a complete, polished CV with these sections (omit any section where no relevant information exists in the CV above):
+1. Name and contact details
+2. PROFESSIONAL PROFILE
+3. KEY SKILLS
+4. WORK EXPERIENCE
+5. EDUCATION AND QUALIFICATIONS
+6. ADDITIONAL INFORMATION`;
   }
+
   if (path === 'first') {
-    const name=document.getElementById('f-name').value.trim(), job=document.getElementById('f-job').value.trim(), ind=document.getElementById('f-industry').value, edu=document.getElementById('f-edu').value, school=document.getElementById('f-school').value.trim(), skills=document.getElementById('f-skills').value.trim(), extra=document.getElementById('f-extra').value.trim(), langs=document.getElementById('f-langs').value.trim(), note=document.getElementById('f-note').value.trim(), phone=document.getElementById('f-phone').value.trim(), email=document.getElementById('f-email').value.trim(), loc=document.getElementById('f-location').value.trim();
-    return `${base}\n\nWrite a complete CV for a FIRST-TIME JOB SEEKER with no formal work experience. Frame positively. NEVER mention "no experience."\n\nName: ${name} | Target job: ${job} | Industry: ${ind}\nEducation: ${edu}${school?' — '+school:''}\nSkills: ${skills}\nLanguages: ${langs||'not specified'}\nVolunteer/activities: ${extra||'none'}\nPhone: ${phone||'not provided'} | Email: ${email||'not provided'} | Location: ${loc||'South Africa'}\nNotes: ${note||'none'}\n\nWrite:\n1. Name and contact details\n2. PROFESSIONAL PROFILE\n3. KEY SKILLS\n4. EDUCATION AND QUALIFICATIONS\n5. VOLUNTEER WORK AND ACTIVITIES\n6. ADDITIONAL INFORMATION`;
+    const name   = document.getElementById('f-name').value.trim();
+    const job    = document.getElementById('f-job').value.trim();
+    const ind    = document.getElementById('f-industry').value;
+    const edu    = document.getElementById('f-edu').value;
+    const school = document.getElementById('f-school').value.trim();
+    const skills = document.getElementById('f-skills').value.trim();
+    const extra  = document.getElementById('f-extra').value.trim();
+    const langs  = document.getElementById('f-langs').value.trim();
+    const note   = document.getElementById('f-note').value.trim();
+    const phone  = document.getElementById('f-phone').value.trim();
+    const email  = document.getElementById('f-email').value.trim();
+    const loc    = document.getElementById('f-location').value.trim();
+
+    return `${base}
+
+Task: Write a complete CV for a first-time job seeker with no formal work experience. Frame everything positively — focus on potential, character, and transferable skills. NEVER use phrases like "no experience" in the CV.
+
+Candidate details:
+- Name: ${name}
+- Target job: ${job}
+- Industry: ${ind}
+- Phone: ${phone || 'not provided'}
+- Email: ${email || 'not provided'}
+- Location: ${loc || 'South Africa'}
+- Highest education: ${edu}${school ? ' — ' + school : ''}
+- Skills and strengths: ${skills}
+- Languages: ${langs || 'not specified'}
+- Volunteer work / activities: ${extra || 'none provided'}
+- Additional notes: ${note || 'none'}
+
+Write these sections (omit any section where no relevant information was provided above):
+1. Name and contact details
+2. PROFESSIONAL PROFILE
+3. KEY SKILLS
+4. EDUCATION AND QUALIFICATIONS
+5. VOLUNTEER WORK AND ACTIVITIES
+6. ADDITIONAL INFORMATION`;
   }
-  const name=document.getElementById('m-name').value.trim(), job=document.getElementById('m-job').value.trim(), ind=document.getElementById('m-industry').value, exp=document.getElementById('m-exp').value.trim(), skills=document.getElementById('m-skills').value.trim(), edu=document.getElementById('m-edu').value, school=document.getElementById('m-school').value.trim(), certs=document.getElementById('m-certs').value.trim(), extra=document.getElementById('m-extra').value.trim(), phone=document.getElementById('m-phone').value.trim(), email=document.getElementById('m-email').value.trim(), loc=document.getElementById('m-location').value.trim();
-  return `${base}\n\nName: ${name} | Target job: ${job} | Industry: ${ind}\nLocation: ${loc||'South Africa'} | Phone: ${phone||'not provided'} | Email: ${email||'not provided'}\nEducation: ${edu||'not specified'}${school?' — '+school:''}\nCertifications: ${certs||'none'}\nSkills: ${skills}\nWork history: ${exp}\nAdditional: ${extra||'none'}\n\nWrite:\n1. Name and contact details\n2. PROFESSIONAL PROFILE\n3. KEY SKILLS\n4. WORK EXPERIENCE\n5. EDUCATION AND QUALIFICATIONS\n6. ADDITIONAL INFORMATION`;
+
+  /* manual path */
+  const name   = document.getElementById('m-name').value.trim();
+  const job    = document.getElementById('m-job').value.trim();
+  const ind    = document.getElementById('m-industry').value;
+  const exp    = document.getElementById('m-exp').value.trim();
+  const skills = document.getElementById('m-skills').value.trim();
+  const edu    = document.getElementById('m-edu').value;
+  const school = document.getElementById('m-school').value.trim();
+  const certs  = document.getElementById('m-certs').value.trim();
+  const extra  = document.getElementById('m-extra').value.trim();
+  const phone  = document.getElementById('m-phone').value.trim();
+  const email  = document.getElementById('m-email').value.trim();
+  const loc    = document.getElementById('m-location').value.trim();
+
+  return `${base}
+
+Task: Write a complete, polished CV for ${name}, applying for: ${job}.
+
+Candidate details:
+- Industry: ${ind}
+- Phone: ${phone || 'not provided'}
+- Email: ${email || 'not provided'}
+- Location: ${loc || 'South Africa'}
+- Highest education: ${edu || 'not specified'}${school ? ' — ' + school : ''}
+- Certifications / licences: ${certs || 'none provided'}
+- Key skills: ${skills}
+- Work history: ${exp}
+- Additional info: ${extra || 'none'}
+
+Write these sections (omit any section where no relevant information was provided above):
+1. Name and contact details
+2. PROFESSIONAL PROFILE
+3. KEY SKILLS
+4. WORK EXPERIENCE
+5. EDUCATION AND QUALIFICATIONS
+6. ADDITIONAL INFORMATION`;
 }
 
 /* ── VALIDATE ── */
@@ -1119,7 +1218,6 @@ function getCVOwnerName() {
 async function saveCVToHistory(path, cvText) {
   const badge = document.getElementById('save-status');
   if (!currentUser) {
-    // Guest — nothing to save to, gently point them at the existing register nudge
     if (badge) {
       badge.innerHTML = '⚠️ <a href="#" onclick="openAuth();return false;">Sign in to save this CV</a>';
       badge.classList.remove('hide');
@@ -1183,256 +1281,3 @@ async function loadHistory() {
   try {
     const { data, error } = await sb
       .from('cvs')
-      .select('id, full_name, cv_text, created_at')
-      .eq('user_id', currentUser.id)
-      .order('created_at', { ascending: false });
-
-    if (error) throw error;
-
-    if (!data || data.length === 0) {
-      listEl.innerHTML = '<p class="history-empty">No saved CVs yet — build one above and it\'ll show up here.</p>';
-      return;
-    }
-
-    window._historyCache = data; // store for view/download lookups by id
-    listEl.innerHTML = data.map(row => `
-      <div class="history-item">
-        <div class="history-item-info">
-          <div class="history-item-name">${(row.full_name || 'My CV').replace(/</g,'&lt;')}</div>
-          <div class="history-item-date">${formatHistoryDate(row.created_at)}</div>
-        </div>
-        <div class="history-item-actions">
-          <button onclick="viewHistoryCV('${row.id}')">👁 View</button>
-          <button onclick="downloadHistoryCV('${row.id}')">⬇ Download</button>
-        </div>
-      </div>
-    `).join('');
-
-  } catch (e) {
-    console.error('Load history failed:', e);
-    listEl.innerHTML = '<p class="history-empty">Could not load your CVs. Please try again.</p>';
-  }
-}
-
-function findHistoryRow(id) {
-  return (window._historyCache || []).find(r => String(r.id) === String(id));
-}
-
-function viewHistoryCV(id) {
-  const row = findHistoryRow(id);
-  if (!row) return;
-  currentCV = row.cv_text;
-  document.getElementById('resume-doc').textContent = row.cv_text;
-  document.getElementById('output-section').style.display = 'block';
-  closeHistory();
-  document.getElementById('output-section').scrollIntoView({behavior:'smooth',block:'start'});
-  const badge = document.getElementById('save-status');
-  if (badge) { badge.textContent = '✅ Saved'; badge.classList.remove('hide'); }
-}
-
-async function downloadHistoryCV(id) {
-  const row = findHistoryRow(id);
-  if (!row) return;
-  try {
-    await buildAndDownloadDocx(row.cv_text, row.full_name);
-  } catch (err) {
-    console.error('History DOCX generation failed:', err);
-    downloadAsTxtFallback(row.cv_text, row.full_name);
-  }
-}
-
-/* ── OUTPUT ACTIONS ── */
-function copyCV() {
-  navigator.clipboard.writeText(currentCV).then(() => {
-    const btn = document.getElementById('copy-btn');
-    const orig = btn.innerHTML;
-    btn.innerHTML = '✅ Copied!';
-    setTimeout(() => btn.innerHTML = orig, 2500);
-  }).catch(() => alert('Please select the text and copy manually (Ctrl+C).'));
-}
-
-function printCV() {
-  const w = window.open('','_blank');
-  w.document.write(`<!DOCTYPE html><html><head><title>My CV</title><style>body{font-family:Arial,sans-serif;font-size:13px;padding:2.5rem;line-height:1.75;max-width:700px;margin:auto;}pre{white-space:pre-wrap;font-family:Arial,sans-serif;}</style></head><body><pre>${currentCV.replace(/</g,'&lt;')}</pre></body></html>`);
-  w.document.close(); w.focus(); w.print();
-}
-
-/* ── FIX 1: Download as proper Word .docx using docx library ── */
-async function ensureDocxLib() {
-  if (!window.docx) {
-    await new Promise((resolve, reject) => {
-      const s = document.createElement('script');
-      s.src = 'https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.min.js';
-      s.onload = resolve;
-      s.onerror = reject;
-      document.head.appendChild(s);
-    });
-  }
-}
-
-async function buildAndDownloadDocx(cvText, rawNameInput) {
-  await ensureDocxLib();
-  const { Document, Packer, Paragraph, TextRun, BorderStyle } = window.docx;
-
-  // Parse the CV text into structured paragraphs
-  const lines = cvText.split('\n');
-  const children = [];
-  let isFirstLine = true;
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const trimmed = line.trim();
-
-    if (trimmed === '') {
-      children.push(new Paragraph({ children: [new TextRun('')], spacing: { after: 60 } }));
-      continue;
-    }
-
-    if (isFirstLine && trimmed.length > 0) {
-      children.push(new Paragraph({
-        children: [new TextRun({ text: trimmed, bold: true, size: 36, color: '007A4D', font: 'Arial' })],
-        spacing: { after: 80 }
-      }));
-      isFirstLine = false;
-      continue;
-    }
-
-    const isHeading = trimmed === trimmed.toUpperCase() && trimmed.length >= 4 && /[A-Z]/.test(trimmed);
-
-    if (isHeading) {
-      children.push(new Paragraph({
-        children: [new TextRun({ text: trimmed, bold: true, size: 24, color: '007A4D', font: 'Arial' })],
-        spacing: { before: 200, after: 80 },
-        border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: '007A4D', space: 1 } }
-      }));
-      continue;
-    }
-
-    if (trimmed.startsWith('- ') || trimmed.startsWith('• ')) {
-      const bulletText = trimmed.replace(/^[-•]\s+/, '');
-      children.push(new Paragraph({
-        children: [new TextRun({ text: bulletText, size: 22, font: 'Arial', color: '2d2d2d' })],
-        bullet: { level: 0 },
-        spacing: { after: 40 }
-      }));
-      continue;
-    }
-
-    children.push(new Paragraph({
-      children: [new TextRun({ text: trimmed, size: 22, font: 'Arial', color: '2d2d2d' })],
-      spacing: { after: 40 }
-    }));
-  }
-
-  const doc = new Document({
-    sections: [{
-      properties: { page: { margin: { top: 1080, right: 1080, bottom: 1080, left: 1080 } } },
-      children
-    }]
-  });
-
-  const buffer = await Packer.toBlob(doc);
-  const rawName = (rawNameInput || 'My_CV').trim().replace(/\s+/g, '_');
-
-  const url = URL.createObjectURL(buffer);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = rawName + '_CV.docx';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
-
-function downloadAsTxtFallback(cvText, rawNameInput) {
-  const rawName = (rawNameInput || 'My_CV').trim().replace(/\s+/g, '_');
-  const blob = new Blob([cvText], {type:'text/plain;charset=utf-8'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = rawName + '_CV.txt';
-  document.body.appendChild(a); a.click();
-  document.body.removeChild(a); URL.revokeObjectURL(url);
-}
-
-async function downloadCV() {
-  const btn = document.getElementById('download-btn');
-  btn.textContent = '⏳ Generating Word doc...';
-  btn.disabled = true;
-
-  try {
-    await buildAndDownloadDocx(currentCV, getCVOwnerName());
-  } catch(err) {
-    console.error('DOCX generation failed:', err);
-    alert('Word download failed — downloading as text file instead.');
-    downloadAsTxtFallback(currentCV, getCVOwnerName());
-  } finally {
-    btn.textContent = '⬇ Download Word (.docx)';
-    btn.disabled = false;
-  }
-}
-
-function startOver() {
-  document.getElementById('output-section').style.display = 'none';
-  const badge = document.getElementById('save-status');
-  if (badge) { badge.classList.add('hide'); badge.textContent = ''; }
-  goBack();
-  window.scrollTo({top:document.getElementById('app-section').offsetTop - 70, behavior:'smooth'});
-}
-
-/* ── PAYMENT RETURN — FIX: starts polling after successful payment ── */
-function checkPaymentReturn() {
-  const params = new URLSearchParams(window.location.search);
-  if (params.get('payment') === 'success') {
-    const banner = document.createElement('div');
-    banner.style.cssText = 'position:fixed;top:70px;left:50%;transform:translateX(-50%);background:#007A4D;color:#fff;padding:14px 28px;border-radius:12px;font-weight:600;font-size:15px;z-index:9999;box-shadow:0 4px 20px rgba(0,122,77,.35);display:flex;align-items:center;gap:10px;white-space:nowrap;';
-    banner.innerHTML = '<span style="font-size:22px">✅</span> Payment successful! Checking your credits...';
-    document.body.appendChild(banner);
-
-    window.history.replaceState({}, '', window.location.pathname);
-
-    if (currentUser) {
-      // Start polling — update banner when credits arrive
-      startCreditsPolling();
-
-      // Update banner once credits are confirmed
-      const checkInterval = setInterval(() => {
-        const c = getCredits();
-        if (c > 0) {
-          banner.innerHTML = '<span style="font-size:22px">✅</span> Payment confirmed! You have ' + c + ' CV' + (c===1?'':'s') + ' ready to use.';
-          clearInterval(checkInterval);
-          setTimeout(() => banner.remove(), 5000);
-        }
-      }, 1000);
-
-      // Remove banner after 30s max regardless
-      setTimeout(() => {
-        banner.remove();
-        clearInterval(checkInterval);
-      }, 30000);
-    } else {
-      setTimeout(() => banner.remove(), 6000);
-    }
-  }
-}
-
-/* ── INIT ── */
-async function init() {
-  if (!window.supabase) {
-    await new Promise((resolve, reject) => {
-      const s = document.createElement('script');
-      s.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
-      s.onload = resolve;
-      s.onerror = reject;
-      document.head.appendChild(s);
-    });
-  }
-  updateCreditsDisplay();
-  updateGuestNotice();
-  await checkExistingSession();
-  updateAccountPill();
-  checkPaymentReturn();
-}
-init();
-</script>
-</body>
-</html>
