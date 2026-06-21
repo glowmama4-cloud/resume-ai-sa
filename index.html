@@ -1004,11 +1004,7 @@ function hideLoading() {
   document.getElementById('loading-card').style.display = 'none';
 }
 
-/* ══════════════════════════════════════════════════════
-   FIX 1 — buildPrompt: hard rule against placeholder text.
-   If a section has no info, omit it entirely. Never write
-   [Insert...] or [Note:...] brackets in the output.
-══════════════════════════════════════════════════════ */
+/* ── BUILD PROMPT ── */
 function buildPrompt(path) {
   const fmtEl = document.getElementById(path[0]+'-format');
   const isGlobal = fmtEl && fmtEl.value === 'global';
@@ -1281,3 +1277,176 @@ async function loadHistory() {
   try {
     const { data, error } = await sb
       .from('cvs')
+      .select('id, full_name, cv_text, path, created_at')
+      .eq('user_id', currentUser.id)
+      .order('created_at', { ascending: false })
+      .limit(20);
+
+    if (error) throw error;
+
+    if (!data || data.length === 0) {
+      listEl.innerHTML = '<p class="history-empty">No CVs saved yet. Build your first one below!</p>';
+      return;
+    }
+
+    listEl.innerHTML = data.map((cv, i) => `
+      <div class="history-item">
+        <div class="history-item-info">
+          <div class="history-item-name">${cv.full_name || 'My CV'}</div>
+          <div class="history-item-date">${formatHistoryDate(cv.created_at)}</div>
+        </div>
+        <div class="history-item-actions">
+          <button onclick="viewHistoryCV(${i})" data-index="${i}">View</button>
+          <button onclick="downloadHistoryCV(${i})" data-index="${i}">⬇ Download</button>
+        </div>
+      </div>
+    `).join('');
+
+    // Store CVs globally for button access
+    window._historyCVs = data;
+
+  } catch(e) {
+    console.error('Load history error:', e);
+    listEl.innerHTML = '<p class="history-empty">Could not load your CVs. Please try again.</p>';
+  }
+}
+
+function viewHistoryCV(index) {
+  const cv = window._historyCVs && window._historyCVs[index];
+  if (!cv) return;
+  closeHistory();
+  currentCV = cv.cv_text;
+  document.getElementById('resume-doc').textContent = cv.cv_text;
+  document.getElementById('output-section').style.display = 'block';
+  document.getElementById('path-section').classList.add('hide');
+  document.getElementById('output-section').scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+function downloadHistoryCV(index) {
+  const cv = window._historyCVs && window._historyCVs[index];
+  if (!cv) return;
+  currentCV = cv.cv_text;
+  downloadCV();
+}
+
+/* ── OUTPUT ACTIONS ── */
+function copyCV() {
+  navigator.clipboard.writeText(currentCV).then(() => {
+    const b = document.getElementById('copy-btn');
+    b.textContent = '✅ Copied!';
+    setTimeout(() => b.textContent = '📋 Copy', 2000);
+  });
+}
+
+function printCV() {
+  const win = window.open('', '_blank');
+  win.document.write('<pre style="font-family:Arial,sans-serif;font-size:13px;line-height:1.8;white-space:pre-wrap;padding:40px;max-width:800px;margin:0 auto;">' + currentCV.replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</pre>');
+  win.document.close();
+  win.print();
+}
+
+async function downloadCV() {
+  const btn = document.getElementById('download-btn');
+  if (btn) { btn.textContent = '⏳ Preparing...'; btn.disabled = true; }
+  try {
+    if (!window.docx) {
+      await new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.js';
+        s.onload = resolve; s.onerror = reject;
+        document.head.appendChild(s);
+      });
+    }
+    const { Document, Packer, Paragraph, TextRun } = window.docx;
+    const lines = currentCV.split('\n');
+    const children = [];
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) { children.push(new Paragraph({ text: '' })); continue; }
+      if (trimmed === trimmed.toUpperCase() && trimmed.length > 2 && !/^[-•]/.test(trimmed)) {
+        children.push(new Paragraph({
+          children: [new TextRun({ text: trimmed, bold: true, size: 26, color: '007A4D' })],
+          spacing: { before: 240, after: 80 },
+          border: { bottom: { color: 'C8F0DB', size: 6, space: 4, value: 'single' } }
+        }));
+      } else if (/^[-•]/.test(trimmed)) {
+        children.push(new Paragraph({
+          children: [new TextRun({ text: trimmed.replace(/^[-•]\s*/, ''), size: 22 })],
+          bullet: { level: 0 }, spacing: { after: 40 }
+        }));
+      } else {
+        children.push(new Paragraph({
+          children: [new TextRun({ text: trimmed, size: 22 })],
+          spacing: { after: 60 }
+        }));
+      }
+    }
+    const doc = new Document({
+      sections: [{ properties: { page: { margin: { top: 720, right: 900, bottom: 720, left: 900 } } }, children }]
+    });
+    const blob = await Packer.toBlob(doc);
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = 'ResumeAI_SA_CV.docx'; a.click();
+    URL.revokeObjectURL(url);
+  } catch(e) {
+    console.error('Download error:', e);
+    // Fallback: plain text
+    const blob = new Blob([currentCV], { type: 'text/plain' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = 'ResumeAI_SA_CV.txt'; a.click();
+    URL.revokeObjectURL(url);
+  } finally {
+    if (btn) { btn.textContent = '⬇ Download Word (.docx)'; btn.disabled = false; }
+  }
+}
+
+function startOver() {
+  currentCV = ''; uploadedText = ''; currentPath = '';
+  document.getElementById('output-section').style.display = 'none';
+  document.getElementById('path-section').classList.remove('hide');
+  document.getElementById('credits-bar').classList.remove('hide');
+  ['upload','first','manual'].forEach(p => document.getElementById('panel-'+p).classList.add('hide'));
+  document.getElementById('cv-file').value = '';
+  document.getElementById('file-pill').classList.remove('show');
+  updateGuestNotice();
+  document.getElementById('app-section').scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+/* ── PAYMENT SUCCESS ── */
+function checkPaymentReturn() {
+  const params = new URLSearchParams(window.location.search);
+  const payment = params.get('payment');
+  if (payment === 'success') {
+    window.history.replaceState({}, document.title, window.location.pathname);
+    if (currentUser) {
+      startCreditsPolling();
+      setTimeout(() => {
+        alert('🎉 Payment successful! Your credits are being added — this takes up to 30 seconds and will update automatically.');
+      }, 800);
+    }
+  } else if (payment === 'cancelled') {
+    window.history.replaceState({}, document.title, window.location.pathname);
+  }
+}
+
+/* ── INIT ── */
+(async function init() {
+  if (!window.supabase) {
+    await new Promise((resolve) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
+      s.onload = resolve; s.onerror = resolve;
+      document.head.appendChild(s);
+    });
+  }
+  await checkExistingSession();
+  updateCreditsDisplay();
+  updateGuestNotice();
+  checkPaymentReturn();
+})();
+</script>
+
+</body>
+</html>
