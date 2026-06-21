@@ -11,6 +11,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- Load Supabase and docx upfront so browser tracking prevention cannot block them -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.js" crossorigin="anonymous"></script>
 <style>
 :root {
   --sa-green:   #007A4D;
@@ -51,7 +54,8 @@ nav{background:var(--ink);padding:0 24px;height:58px;display:flex;align-items:ce
 .logo-dot{width:9px;height:9px;border-radius:50%;background:var(--sa-green);}
 .logo em{color:var(--sa-gold);font-style:normal;}
 .nav-right{display:flex;align-items:center;gap:10px;}
-.nav-tag{font-size:12px;font-weight:500;padding:4px 12px;border-radius:20px;background:rgba(255,255,255,.1);color:#ccc;}
+.nav-tag{font-size:12px;font-weight:500;padding:4px 12px;border-radius:20px;background:rgba(255,255,255,.1);color:#ccc;cursor:pointer;user-select:none;}
+.nav-tag:hover{background:rgba(255,255,255,.2);color:#fff;}
 .nav-btn{font-size:13px;font-weight:600;padding:7px 16px;border-radius:8px;border:none;cursor:pointer;background:var(--sa-green);color:#fff;transition:background .15s;}
 .nav-btn:hover{background:var(--sa-green-d);}
 .nav-btn-ghost{background:transparent;border:1px solid rgba(255,255,255,.3);color:#fff;}
@@ -233,7 +237,7 @@ footer a{color:var(--sa-green);text-decoration:none;}
   </div>
   <div class="nav-right">
     <button class="nav-btn nav-btn-ghost hide" id="my-cvs-btn" onclick="openHistory()">📄 My CVs</button>
-    <div class="nav-tag" id="account-pill">👤 Sign in / Register</div>
+    <div class="nav-tag" id="account-pill" onclick="openAuth()">👤 Sign in / Register</div>
     <button class="nav-btn" onclick="scrollToApp()">Build My CV →</button>
   </div>
 </nav>
@@ -657,9 +661,24 @@ let supabaseClient = null;
 function getSupabase() {
   if (supabaseClient) return supabaseClient;
   try {
-    supabaseClient = window.supabase
-      ? window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_PUBLISHABLE_KEY)
-      : null;
+    if (!window.supabase) { console.warn('Supabase library not loaded'); return null; }
+    supabaseClient = window.supabase.createClient(
+      CONFIG.SUPABASE_URL,
+      CONFIG.SUPABASE_PUBLISHABLE_KEY,
+      {
+        auth: {
+          persistSession: true,
+          autoRefreshToken: true,
+          detectSessionInUrl: true,
+          storage: {
+            // Custom storage that works even when cookies/localStorage are blocked
+            getItem: (key) => { try { return localStorage.getItem(key); } catch(e) { return sessionStorage.getItem(key); } },
+            setItem: (key, val) => { try { localStorage.setItem(key, val); } catch(e) { try { sessionStorage.setItem(key, val); } catch(e2) {} } },
+            removeItem: (key) => { try { localStorage.removeItem(key); } catch(e) { try { sessionStorage.removeItem(key); } catch(e2) {} } }
+          }
+        }
+      }
+    );
   } catch(e) {
     console.warn('Supabase init error:', e);
     supabaseClient = null;
@@ -1579,12 +1598,7 @@ async function downloadCV() {
   if (btn) { btn.textContent = '⏳ Preparing...'; btn.disabled = true; }
   currentCV = extractPlainTextFromPreview();
   try {
-    if (!window.docx) {
-      await loadScriptWithFallback([
-        'https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.js',
-        'https://unpkg.com/docx@8.5.0/build/index.js'
-      ], () => !!window.docx);
-    }
+    if (!window.docx) throw new Error('Word library not loaded. Please refresh the page and try again.');
     const { Document, Packer, Paragraph, TextRun } = window.docx;
     const lines = currentCV.split('\n');
     const children = [];
@@ -1722,17 +1736,6 @@ function checkPaymentReturn() {
 /* ── INIT ── */
 (async function init() {
   try {
-    if (!window.supabase) {
-      await new Promise((resolve) => {
-        let done = false;
-        const finish = () => { if (!done) { done = true; resolve(); } };
-        const s = document.createElement('script');
-        s.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
-        s.onload = finish; s.onerror = finish;
-        document.head.appendChild(s);
-        setTimeout(finish, 8000);
-      });
-    }
     await checkExistingSession();
     updateCreditsDisplay();
     updateGuestNotice();
