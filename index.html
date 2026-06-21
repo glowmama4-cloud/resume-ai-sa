@@ -1173,23 +1173,37 @@ function validate(path) {
    single blocked/slow CDN (ad-blocker, firewall, temporary outage) from
    causing a misleading "check your internet connection" error when the
    person's connection is actually fine. */
-function loadScriptWithFallback(urls, checkLoaded) {
+function loadScriptWithFallback(urls, checkLoaded, timeoutMs = 8000) {
   return new Promise((resolve, reject) => {
     if (checkLoaded()) { resolve(); return; }
     let i = 0;
+    let settled = false;
     function tryNext() {
+      if (settled) return;
       if (i >= urls.length) {
+        settled = true;
         reject(new Error('Could not load a required tool from any source. Please check your internet connection or try disabling browser extensions (like ad-blockers) that may be blocking scripts.'));
         return;
       }
       const url = urls[i++];
       const s = document.createElement('script');
       s.src = url;
+      const timer = setTimeout(() => {
+        if (settled) return;
+        s.onload = s.onerror = null;
+        tryNext();
+      }, timeoutMs);
       s.onload = () => {
-        if (checkLoaded()) resolve();
+        if (settled) return;
+        clearTimeout(timer);
+        if (checkLoaded()) { settled = true; resolve(); }
         else tryNext();
       };
-      s.onerror = tryNext;
+      s.onerror = () => {
+        if (settled) return;
+        clearTimeout(timer);
+        tryNext();
+      };
       document.head.appendChild(s);
     }
     tryNext();
@@ -1707,18 +1721,27 @@ function checkPaymentReturn() {
 
 /* ── INIT ── */
 (async function init() {
-  if (!window.supabase) {
-    await new Promise((resolve) => {
-      const s = document.createElement('script');
-      s.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
-      s.onload = resolve; s.onerror = resolve;
-      document.head.appendChild(s);
-    });
+  try {
+    if (!window.supabase) {
+      await new Promise((resolve) => {
+        let done = false;
+        const finish = () => { if (!done) { done = true; resolve(); } };
+        const s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
+        s.onload = finish; s.onerror = finish;
+        document.head.appendChild(s);
+        setTimeout(finish, 8000);
+      });
+    }
+    await checkExistingSession();
+    updateCreditsDisplay();
+    updateGuestNotice();
+    checkPaymentReturn();
+  } catch (e) {
+    console.error('Init error:', e);
+    updateCreditsDisplay();
+    updateGuestNotice();
   }
-  await checkExistingSession();
-  updateCreditsDisplay();
-  updateGuestNotice();
-  checkPaymentReturn();
 })();
 </script>
 
