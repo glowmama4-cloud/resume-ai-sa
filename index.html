@@ -186,7 +186,18 @@ textarea{min-height:90px;}
 .obt:hover{border-color:var(--ink);color:var(--ink);}
 .obt.grn{background:var(--sa-green);color:#fff;border-color:var(--sa-green);}
 .obt.grn:hover{background:var(--sa-green-d);}
-.resume-doc{background:var(--surf);border:1px solid var(--border);border-radius:var(--radius);padding:28px;font-size:13.5px;line-height:1.9;white-space:pre-wrap;font-family:'Sora',sans-serif;box-shadow:var(--shadow);}
+.resume-doc{background:var(--surf);border:1px solid var(--border);border-radius:var(--radius);padding:36px;font-size:14px;line-height:1.85;font-family:'Sora',sans-serif;box-shadow:var(--shadow);outline:none;}
+.resume-doc:focus{border-color:var(--sa-green);box-shadow:0 0 0 3px rgba(0,122,77,.1);}
+.resume-doc h1{font-size:20px;font-weight:700;color:var(--ink);margin-bottom:10px;letter-spacing:.3px;}
+.resume-doc h2{font-size:14px;font-weight:700;color:var(--sa-green);text-transform:uppercase;letter-spacing:.6px;margin:20px 0 10px;padding-bottom:6px;border-bottom:1.5px solid #c8f0db;}
+.resume-doc h2:first-of-type{margin-top:0;}
+.resume-doc p{margin-bottom:8px;}
+.resume-doc ul{margin:0 0 10px 0;padding-left:20px;}
+.resume-doc li{margin-bottom:5px;}
+.resume-doc strong{color:var(--ink);font-weight:600;}
+.resume-doc .contact-line{font-size:13px;color:var(--ink2);margin-bottom:3px;}
+.edit-hint{font-size:12px;color:var(--ink3);margin-bottom:10px;display:flex;align-items:center;gap:6px;}
+.edit-hint strong{color:var(--ink2);}
 .next-steps{background:var(--surf2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px 16px;font-size:13px;color:var(--ink2);margin-top:16px;}
 .next-steps strong{color:var(--ink);}
 .next-steps a{color:var(--sa-green);}
@@ -588,15 +599,17 @@ footer a{color:var(--sa-green);text-decoration:none;}
       <div class="out-btns">
         <button class="obt" id="copy-btn" onclick="copyCV()">📋 Copy</button>
         <button class="obt" onclick="printCV()">🖨 Print</button>
-        <button class="obt grn" id="download-btn" onclick="downloadCV()">⬇ Download Word (.docx)</button>
+        <button class="obt" id="download-docx-btn" onclick="downloadCV()">⬇ Word (.docx)</button>
+        <button class="obt grn" id="download-pdf-btn" onclick="downloadPDF()">⬇ Download PDF</button>
       </div>
     </div>
-    <div class="resume-doc" id="resume-doc"></div>
+    <div class="edit-hint">✏️ <strong>Tip:</strong> Click anywhere in your CV below to fix a typo, add a detail, or tweak the wording — your changes are saved automatically when you download.</div>
+    <div class="resume-doc" id="resume-doc" contenteditable="true" oninput="onCVEdited()"></div>
     <div class="next-steps">
       <strong>Where to apply now:</strong><br>
       🇿🇦 SA jobs: <a href="https://www.pnet.co.za" target="_blank">PNet</a>, <a href="https://www.careers24.com" target="_blank">Careers24</a>, <a href="https://za.indeed.com" target="_blank">Indeed SA</a>, <a href="https://www.linkedin.com/jobs" target="_blank">LinkedIn</a><br>
       🌍 Remote &amp; global: <a href="https://www.linkedin.com/jobs/remote-jobs" target="_blank">LinkedIn Remote</a>, <a href="https://remotive.com" target="_blank">Remotive</a>, <a href="https://www.upwork.com" target="_blank">Upwork</a>, <a href="https://remoteafrica.io" target="_blank">RemoteAfrica</a><br>
-      💡 <strong>Tip:</strong> Your CV downloads as a Word document — open it, save as PDF if needed, then attach to any job application.
+      💡 <strong>Tip:</strong> Download as PDF to send to employers, or Word if you want to keep editing later.
     </div>
     <button class="back-btn" onclick="startOver()">← Build another CV</button>
   </div>
@@ -607,7 +620,7 @@ footer a{color:var(--sa-green);text-decoration:none;}
     <div class="how-grid">
       <div class="how-card"><div class="how-icon">📎</div><h4>Pick your path</h4><p>Upload old CV, first-time, or type your details</p></div>
       <div class="how-card"><div class="how-icon">🤖</div><h4>AI rewrites it</h4><p>ATS-friendly keywords, professional language, 60 seconds</p></div>
-      <div class="how-card"><div class="how-icon">⬇</div><h4>Download Word doc</h4><p>Gets a proper .docx file — ready to email to employers</p></div>
+      <div class="how-card"><div class="how-icon">⬇</div><h4>Edit, then download</h4><p>Tweak it on screen, then get a proper PDF or Word file</p></div>
       <div class="how-card"><div class="how-icon">💼</div><h4>Get the interview</h4><p>Clean CV passes ATS and reaches real humans</p></div>
     </div>
   </div>
@@ -1150,6 +1163,98 @@ function validate(path) {
   return true;
 }
 
+/* ── CV TEXT <-> HTML RENDERING ──
+   The AI returns plain text: CAPITAL LINES are headings, "-" lines are bullets,
+   the first 1-4 lines are name + contact details. We convert that into clean,
+   styled, EDITABLE HTML for the on-screen preview — and can convert it straight
+   back to plain text (reading from the live DOM) for Word/PDF export, so any
+   edits the user makes on screen are automatically included in the download. */
+function escapeHTML(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function looksLikeHeading(line) {
+  const t = line.trim();
+  if (!t || t.length < 3) return false;
+  if (/^[-•]/.test(t)) return false;
+  const letters = t.replace(/[^A-Za-z]/g,'');
+  if (!letters) return false;
+  return t === t.toUpperCase() && letters.length >= 3;
+}
+
+function renderCVAsHTML(rawText) {
+  const lines = rawText.replace(/\r\n/g,'\n').split('\n');
+  let html = '';
+  let inList = false;
+  let nameSet = false;
+
+  function closeList() { if (inList) { html += '</ul>'; inList = false; } }
+
+  lines.forEach((line, idx) => {
+    const t = line.trim();
+    if (!t) { closeList(); return; }
+
+    // First non-empty heading-less line = the candidate's name
+    if (!nameSet && !looksLikeHeading(t) && !/^[-•]/.test(t)) {
+      closeList();
+      html += `<h1>${escapeHTML(t)}</h1>`;
+      nameSet = true;
+      return;
+    }
+
+    if (looksLikeHeading(t)) {
+      closeList();
+      html += `<h2>${escapeHTML(t)}</h2>`;
+      return;
+    }
+
+    if (/^[-•]/.test(t)) {
+      if (!inList) { html += '<ul>'; inList = true; }
+      html += `<li>${escapeHTML(t.replace(/^[-•]\s*/, ''))}</li>`;
+      return;
+    }
+
+    // Contact lines (email/phone/linkedin/languages) right after the name, before first heading
+    closeList();
+    if (!html.includes('<h2>') && (/@|linkedin|\+?\d{2,}|http/i.test(t) || /^(email|phone|linkedin|languages?|location|address):/i.test(t))) {
+      html += `<p class="contact-line">${escapeHTML(t)}</p>`;
+    } else {
+      html += `<p>${escapeHTML(t)}</p>`;
+    }
+  });
+  closeList();
+  return html;
+}
+
+/* Reads the live (possibly user-edited) preview DOM and rebuilds plain text,
+   preserving CAPS headings and dash-bullets — used for Word/PDF/Copy so any
+   on-screen edits are reflected in every export. */
+function extractPlainTextFromPreview() {
+  const root = document.getElementById('resume-doc');
+  let out = [];
+  root.childNodes.forEach(node => {
+    if (node.nodeType !== 1) return;
+    const tag = node.tagName;
+    const text = node.textContent.trim();
+    if (!text) return;
+    if (tag === 'H1') { out.push(text); }
+    else if (tag === 'H2') { out.push(''); out.push(text.toUpperCase()); }
+    else if (tag === 'UL') {
+      node.querySelectorAll('li').forEach(li => {
+        const liText = li.textContent.trim();
+        if (liText) out.push('- ' + liText);
+      });
+    } else if (tag === 'P') { out.push(text); }
+  });
+  return out.join('\n');
+}
+
+function onCVEdited() {
+  currentCV = extractPlainTextFromPreview();
+  const badge = document.getElementById('save-status');
+  if (badge && currentUser) badge.textContent = '✏️ Edited — download to keep your changes';
+}
+
 /* ── GENERATE ── */
 async function generate(path) {
   hideErrs();
@@ -1174,7 +1279,7 @@ async function generate(path) {
     await useCredit();
     hideLoading();
     currentCV = result;
-    document.getElementById('resume-doc').textContent = result;
+    document.getElementById('resume-doc').innerHTML = renderCVAsHTML(result);
     document.getElementById('output-section').style.display = 'block';
     document.getElementById('output-section').scrollIntoView({behavior:'smooth',block:'start'});
     saveCVToHistory(path, result);
@@ -1316,7 +1421,7 @@ function viewHistoryCV(index) {
   if (!cv) return;
   closeHistory();
   currentCV = cv.cv_text;
-  document.getElementById('resume-doc').textContent = cv.cv_text;
+  document.getElementById('resume-doc').innerHTML = renderCVAsHTML(cv.cv_text);
   document.getElementById('output-section').style.display = 'block';
   document.getElementById('path-section').classList.add('hide');
   document.getElementById('output-section').scrollIntoView({behavior:'smooth', block:'start'});
@@ -1331,6 +1436,7 @@ function downloadHistoryCV(index) {
 
 /* ── OUTPUT ACTIONS ── */
 function copyCV() {
+  currentCV = extractPlainTextFromPreview();
   navigator.clipboard.writeText(currentCV).then(() => {
     const b = document.getElementById('copy-btn');
     b.textContent = '✅ Copied!';
@@ -1340,20 +1446,34 @@ function copyCV() {
 
 function printCV() {
   const win = window.open('', '_blank');
-  win.document.write('<pre style="font-family:Arial,sans-serif;font-size:13px;line-height:1.8;white-space:pre-wrap;padding:40px;max-width:800px;margin:0 auto;">' + currentCV.replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</pre>');
+  const html = document.getElementById('resume-doc').innerHTML;
+  win.document.write(`
+    <html><head><title>CV</title><style>
+      body{font-family:Arial,sans-serif;font-size:13px;line-height:1.7;padding:40px;max-width:800px;margin:0 auto;color:#16161a;}
+      h1{font-size:19px;margin-bottom:8px;}
+      h2{font-size:13px;text-transform:uppercase;letter-spacing:.5px;color:#005C39;border-bottom:1px solid #c8f0db;padding-bottom:5px;margin:18px 0 8px;}
+      h2:first-of-type{margin-top:0;}
+      p{margin-bottom:6px;} ul{padding-left:20px;margin-bottom:8px;} li{margin-bottom:4px;}
+      .contact-line{color:#4a4a6a;font-size:12px;}
+    </style></head><body>${html}</body></html>
+  `);
   win.document.close();
-  win.print();
+  win.focus();
+  setTimeout(() => win.print(), 300);
 }
 
+/* Builds the DOCX. Throws on failure instead of silently saving a .txt —
+   the user gets a clear, honest error and can simply try again. */
 async function downloadCV() {
-  const btn = document.getElementById('download-btn');
+  const btn = document.getElementById('download-docx-btn');
   if (btn) { btn.textContent = '⏳ Preparing...'; btn.disabled = true; }
+  currentCV = extractPlainTextFromPreview();
   try {
     if (!window.docx) {
       await new Promise((resolve, reject) => {
         const s = document.createElement('script');
         s.src = 'https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.js';
-        s.onload = resolve; s.onerror = reject;
+        s.onload = resolve; s.onerror = () => reject(new Error('Could not load the document tool. Check your internet connection.'));
         document.head.appendChild(s);
       });
     }
@@ -1390,15 +1510,76 @@ async function downloadCV() {
     a.href = url; a.download = 'ResumeAI_SA_CV.docx'; a.click();
     URL.revokeObjectURL(url);
   } catch(e) {
-    console.error('Download error:', e);
-    // Fallback: plain text
-    const blob = new Blob([currentCV], { type: 'text/plain' });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href = url; a.download = 'ResumeAI_SA_CV.txt'; a.click();
-    URL.revokeObjectURL(url);
+    console.error('Word download error:', e);
+    alert('⚠️ Could not create the Word file: ' + (e.message || 'please try again') + '\n\nYou can also try "Download PDF" instead.');
   } finally {
-    if (btn) { btn.textContent = '⬇ Download Word (.docx)'; btn.disabled = false; }
+    if (btn) { btn.textContent = '⬇ Word (.docx)'; btn.disabled = false; }
+  }
+}
+
+/* Builds a real PDF (not a converted screenshot) so layout stays clean and
+   text stays selectable/searchable — important for ATS and for recruiters
+   who copy-paste contact details. Throws on failure with a clear message
+   instead of silently downloading the wrong file type. */
+async function downloadPDF() {
+  const btn = document.getElementById('download-pdf-btn');
+  if (btn) { btn.textContent = '⏳ Preparing...'; btn.disabled = true; }
+  currentCV = extractPlainTextFromPreview();
+  try {
+    if (!window.jspdf) {
+      await new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js';
+        s.onload = resolve; s.onerror = () => reject(new Error('Could not load the PDF tool. Check your internet connection.'));
+        document.head.appendChild(s);
+      });
+    }
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+    const marginX = 56, maxWidth = 595 - marginX * 2;
+    let y = 56;
+    const pageBottom = 770;
+
+    function ensureSpace(lines) {
+      if (y + lines * 14 > pageBottom) { doc.addPage(); y = 56; }
+    }
+
+    const lines = currentCV.split('\n');
+    lines.forEach(raw => {
+      const trimmed = raw.trim();
+      if (!trimmed) { y += 8; return; }
+
+      const isHeading = trimmed === trimmed.toUpperCase() && trimmed.length > 2 && !/^[-•]/.test(trimmed);
+      const isBullet  = /^[-•]/.test(trimmed);
+
+      if (isHeading) {
+        ensureSpace(2);
+        y += 8;
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(0, 122, 77);
+        doc.text(trimmed, marginX, y);
+        y += 4;
+        doc.setDrawColor(200, 240, 219); doc.setLineWidth(1);
+        doc.line(marginX, y, marginX + maxWidth, y);
+        y += 14;
+        doc.setTextColor(22, 22, 26);
+        return;
+      }
+
+      const text = isBullet ? trimmed.replace(/^[-•]\s*/, '') : trimmed;
+      const indent = isBullet ? 14 : 0;
+      const prefix = isBullet ? '•  ' : '';
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(10.5);
+      const wrapped = doc.splitTextToSize(prefix + text, maxWidth - indent);
+      ensureSpace(wrapped.length);
+      wrapped.forEach(w => { doc.text(w, marginX + indent, y); y += 14; });
+    });
+
+    doc.save('ResumeAI_SA_CV.pdf');
+  } catch(e) {
+    console.error('PDF download error:', e);
+    alert('⚠️ Could not create the PDF: ' + (e.message || 'please try again') + '\n\nYou can also try "Word (.docx)" instead.');
+  } finally {
+    if (btn) { btn.textContent = '⬇ Download PDF'; btn.disabled = false; }
   }
 }
 
