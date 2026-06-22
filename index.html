@@ -273,10 +273,21 @@ footer a{color:var(--sa-green);text-decoration:none;}
       <h3>Welcome back</h3>
       <p class="auth-sub">Log in to continue building your CV.</p>
       <div class="field" style="margin-bottom:10px;"><label>Email address</label><input type="email" id="li-email" placeholder="you@email.com"></div>
-      <div class="field" style="margin-bottom:14px;"><label>Password</label><input type="password" id="li-password" placeholder="Your password"></div>
+      <div class="field" style="margin-bottom:4px;"><label>Password</label><input type="password" id="li-password" placeholder="Your password"></div>
+      <p style="text-align:right;margin-bottom:14px;"><a href="#" onclick="showReset();return false;" style="font-size:12px;color:var(--sa-green);">Forgot password?</a></p>
       <button class="gen-btn" id="li-btn" onclick="handleLogIn()">Log in</button>
       <div class="err-box" id="err-login"></div>
       <p class="auth-switch">New here? <a href="#" onclick="showSignup();return false;">Create an account</a></p>
+    </div>
+
+    <div id="auth-reset-view" class="hide">
+      <h3>Reset your password</h3>
+      <p class="auth-sub">Enter your email and we'll send you a reset link.</p>
+      <div class="field" style="margin-bottom:14px;"><label>Email address</label><input type="email" id="reset-email" placeholder="you@email.com"></div>
+      <button class="gen-btn" id="reset-btn" onclick="handlePasswordReset()">Send reset link</button>
+      <div class="err-box" id="err-reset"></div>
+      <div class="auth-switch" id="reset-success" style="display:none;color:var(--sa-green);font-weight:600;margin-top:10px;">✅ Reset link sent! Check your email inbox.</div>
+      <p class="auth-switch"><a href="#" onclick="showLogin();return false;">← Back to login</a></p>
     </div>
   </div>
 </div>
@@ -763,6 +774,12 @@ function showSignup() {
 function showLogin() {
   document.getElementById('auth-login-view').classList.remove('hide');
   document.getElementById('auth-signup-view').classList.add('hide');
+  document.getElementById('auth-reset-view').classList.add('hide');
+}
+function showReset() {
+  document.getElementById('auth-reset-view').classList.remove('hide');
+  document.getElementById('auth-login-view').classList.add('hide');
+  document.getElementById('auth-signup-view').classList.add('hide');
 }
 
 async function handleSignUp() {
@@ -834,6 +851,30 @@ async function handleLogOut() {
   updateAccountPill();
   updateGuestNotice();
   updateCreditsDisplay();
+}
+
+async function handlePasswordReset() {
+  const email = document.getElementById('reset-email').value.trim();
+  const errEl = document.getElementById('err-reset');
+  const successEl = document.getElementById('reset-success');
+  errEl.style.display = 'none';
+  successEl.style.display = 'none';
+  if (!email) { errEl.textContent = 'Please enter your email address.'; errEl.style.display = 'block'; return; }
+  const sb = getSupabase();
+  if (!sb) { errEl.textContent = 'Connection error. Please refresh and try again.'; errEl.style.display = 'block'; return; }
+  document.getElementById('reset-btn').disabled = true;
+  try {
+    const { error } = await sb.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin + '/?reset=true'
+    });
+    if (error) throw error;
+    successEl.style.display = 'block';
+  } catch(e) {
+    errEl.textContent = e.message || 'Could not send reset email. Please try again.';
+    errEl.style.display = 'block';
+  } finally {
+    document.getElementById('reset-btn').disabled = false;
+  }
 }
 
 function updateAccountPill() {
