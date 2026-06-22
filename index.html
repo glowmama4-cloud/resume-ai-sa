@@ -1104,6 +1104,8 @@ CRITICAL RULES — follow every one without exception:
 - ONLY use information that has been provided to you — do not invent jobs, qualifications, or details
 - ABSOLUTE RULE — NO PLACEHOLDERS: If a fact (a qualification, institution, date, certificate, job title, etc.) was not given to you, you must DELETE that entire bullet point or section header — do not write it with a placeholder. Never output text like "[Insert Qualification Title]", "[Insert Institution Name]", "[Note: Please provide...]", "[List any...]", or any text containing square brackets. If the EDUCATION section has no real information provided, omit the whole EDUCATION heading and its contents — do not write the heading with placeholder bullets underneath it. The same applies to every other section: a section either has real, provided facts in it, or it does not appear in the CV at all.
 - Before finishing, re-read your own output and confirm there is not a single square bracket "[" anywhere in the document — if there is, remove that line entirely.
+- ABSOLUTE RULE — NO AI NOTES OR META-COMMENTARY: Do NOT add any note, comment, footer, or explanation about the CV at the end or anywhere in the document. Never write lines like "This CV is formatted according to...", "Note: Please provide...", "This resume is ATS-optimised...", or any sentence that describes the CV itself rather than the candidate. The output must contain ONLY the candidate's CV — nothing else.
+- ABSOLUTE RULE — NO SUGGESTIONS TO THE CANDIDATE: Do not include bullet points suggesting what the candidate should add later, such as "Specific work experience details", "Company names and dates", "Any gaps or areas where you have additional experience". If the information was not provided, omit that bullet entirely — do not hint at it.
 - Write the COMPLETE CV from top to bottom — do not truncate, do not cut off mid-section, do not summarise with "etc." — every section must be fully written out
 - The CV must be ready to submit to an employer immediately — no editing required from the user`;
 
@@ -1378,7 +1380,28 @@ function stripPlaceholders(rawText) {
     .replace(/\*\*([^*]+)\*\*/g, '$1')
     .replace(/\*([^*]+)\*/g, '$1');
 
-  let lines = cleaned.replace(/\r\n/g, '\n').split('\n').filter(line => !/\[.*\]/.test(line));
+  // Patterns that indicate AI instructions / meta-notes leaking into CV output
+  const AI_LEAK_PATTERNS = [
+    /\[.*\]/,                                           // anything in [square brackets]
+    /^(note|please note|tip|reminder|instructions?):/i, // AI notes
+    /this cv is formatted according to/i,               // AI footer note
+    /ats.optimi[sz]ed keywords/i,                       // AI description of itself
+    /formatted according to south african/i,            // AI self-description
+    /includes ats/i,                                    // AI self-description
+    /specific work experience details/i,                // leaked instruction
+    /company names,?\s*dates/i,                         // leaked instruction
+    /institutions,?\s*years,?\s*certifications/i,       // leaked instruction
+    /any gaps or areas where you have/i,                // leaked instruction
+    /availability and reference contact information/i,  // leaked instruction
+    /achievements with numbers/i,                       // leaked instruction
+    /please (provide|add|include|list|fill)/i,          // AI instruction
+    /you (may|can|should|could|need to) (add|include|provide|fill)/i, // AI instruction
+  ];
+
+  let lines = cleaned.replace(/\r\n/g, '\n').split('\n').filter(line => {
+    const t = line.trim();
+    return !AI_LEAK_PATTERNS.some(pattern => pattern.test(t));
+  });
   const removedHeadings = [];
 
   // A "heading-like" line for this cleanup pass also includes Title Case
