@@ -95,6 +95,7 @@ tr:hover td{background:#fafbfc;}
     <input type="password" id="admin-pass" placeholder="Password" />
     <button class="login-btn" onclick="adminLogin()">Sign In</button>
     <div class="login-err" id="login-err">Invalid credentials or not authorised.</div>
+    <p style="margin-top:14px;font-size:13px;text-align:center;"><a href="#" onclick="adminResetPassword();return false;" style="color:#145a32;">Forgot password? Send reset link</a></p>
   </div>
 </div>
 
@@ -417,6 +418,19 @@ async function loadExtras() {
       html += `<tr><td>${i+1}</td><td>${fmt(r.created_at)}</td><td>${r.user_id||'—'}</td><td class="cv-preview">${truncate(r.content,80)}</td></tr>`;
     });
     document.getElementById('bios-table-body').innerHTML = html + '</tbody></table>';
+  }
+}
+
+async function adminResetPassword() {
+  const email = document.getElementById('admin-email').value.trim() || ADMIN_EMAIL;
+  initSupabase();
+  const { error } = await sb.auth.resetPasswordForEmail(email, {
+    redirectTo: window.location.origin + '/admin.html?reset=true'
+  });
+  if (error) {
+    alert('Could not send reset email: ' + error.message);
+  } else {
+    alert('✅ Reset link sent to ' + email + ' — check your inbox!');
   }
 }
 
