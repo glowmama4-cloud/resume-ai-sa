@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin — ResumeAI SA</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --green:#1db954;--gold:#f0c040;--red:#e53935;--ink:#111;--ink2:#444;--ink3:#888;
+  --surf:#f7f8fa;--surf2:#fff;--border:#e2e6ea;--radius:12px;--rs:8px;
+}
+body{font-family:'Segoe UI',Arial,sans-serif;background:#f0f2f5;color:var(--ink);min-height:100vh;}
+
+/* LOGIN */
+#login-screen{display:flex;align-items:center;justify-content:center;min-height:100vh;background:linear-gradient(135deg,#0a2a1a 0%,#145a32 100%);}
+.login-box{background:#fff;border-radius:var(--radius);padding:40px 32px;width:100%;max-width:360px;text-align:center;box-shadow:0 8px 40px rgba(0,0,0,.18);}
+.login-logo{font-size:28px;font-weight:800;color:#145a32;margin-bottom:4px;}
+.login-sub{font-size:13px;color:var(--ink3);margin-bottom:24px;}
+.login-box input{width:100%;border:1.5px solid var(--border);border-radius:var(--rs);padding:11px 14px;font-size:14px;margin-bottom:12px;outline:none;}
+.login-box input:focus{border-color:var(--green);}
+.login-btn{width:100%;background:#145a32;color:#fff;border:none;border-radius:var(--rs);padding:12px;font-size:15px;font-weight:600;cursor:pointer;}
+.login-btn:hover{background:#0e3d22;}
+.login-err{color:var(--red);font-size:13px;margin-top:8px;display:none;}
+
+/* LAYOUT */
+#admin-screen{display:none;}
+.top-bar{background:#145a32;color:#fff;padding:14px 24px;display:flex;align-items:center;justify-content:space-between;}
+.top-bar .brand{font-size:18px;font-weight:700;}
+.top-bar .brand span{color:var(--gold);}
+.top-bar .user-info{font-size:13px;opacity:.8;}
+.logout-btn{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:6px;padding:6px 14px;font-size:13px;cursor:pointer;}
+.logout-btn:hover{background:rgba(255,255,255,.25);}
+
+.main{padding:24px;max-width:1200px;margin:0 auto;}
+.page-title{font-size:22px;font-weight:700;margin-bottom:20px;color:#145a32;}
+
+/* STAT CARDS */
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:28px;}
+.stat-card{background:#fff;border-radius:var(--radius);padding:18px 16px;border:1px solid var(--border);text-align:center;}
+.stat-num{font-size:32px;font-weight:800;color:#145a32;}
+.stat-label{font-size:12px;color:var(--ink3);margin-top:4px;}
+.stat-card.gold .stat-num{color:#b8860b;}
+.stat-card.blue .stat-num{color:#1565c0;}
+.stat-card.red .stat-num{color:var(--red);}
+
+/* TABS */
+.tabs{display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:20px;}
+.tab{padding:10px 20px;font-size:14px;font-weight:600;cursor:pointer;color:var(--ink3);border-bottom:3px solid transparent;margin-bottom:-2px;transition:all .15s;}
+.tab.active{color:#145a32;border-bottom-color:#145a32;}
+.tab:hover{color:#145a32;}
+.tab-content{display:none;}
+.tab-content.active{display:block;}
+
+/* TABLES */
+.table-wrap{background:#fff;border-radius:var(--radius);border:1px solid var(--border);overflow:hidden;}
+.table-header{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
+.table-header h3{font-size:15px;font-weight:700;}
+.table-header .count{font-size:12px;color:var(--ink3);}
+.refresh-btn{background:#f0f2f5;border:1px solid var(--border);border-radius:6px;padding:6px 14px;font-size:12px;cursor:pointer;color:var(--ink2);}
+.refresh-btn:hover{background:#e2e6ea;}
+table{width:100%;border-collapse:collapse;}
+th{background:#f7f8fa;font-size:12px;font-weight:600;color:var(--ink3);text-transform:uppercase;letter-spacing:.5px;padding:10px 16px;text-align:left;border-bottom:1px solid var(--border);}
+td{font-size:13px;padding:12px 16px;border-bottom:1px solid #f0f0f0;color:var(--ink2);vertical-align:top;}
+tr:last-child td{border-bottom:none;}
+tr:hover td{background:#fafbfc;}
+.badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;}
+.badge.pro{background:#fffdf0;color:#b8860b;border:1px solid #f0c040;}
+.badge.starter{background:#f0faf5;color:#145a32;border:1px solid #a8d5b5;}
+.badge.free{background:#f5f5f5;color:#666;border:1px solid #ddd;}
+.cv-preview{max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:var(--ink3);}
+.empty-state{text-align:center;padding:40px;color:var(--ink3);font-size:14px;}
+.loading{text-align:center;padding:40px;color:var(--ink3);}
+
+/* ENQUIRY FLAG */
+.flag-row td{background:#fff8e1 !important;}
+.flag{color:#f57c00;font-size:12px;font-weight:600;}
+
+@media(max-width:600px){
+  .stat-grid{grid-template-columns:repeat(2,1fr);}
+  .main{padding:14px;}
+  td,th{padding:8px 10px;font-size:12px;}
+}
+</style>
+</head>
+<body>
+
+<!-- LOGIN SCREEN -->
+<div id="login-screen">
+  <div class="login-box">
+    <div class="login-logo">ResumeAI SA</div>
+    <div class="login-sub">Admin Dashboard — Authorised Access Only</div>
+    <input type="email" id="admin-email" placeholder="Admin email" />
+    <input type="password" id="admin-pass" placeholder="Password" />
+    <button class="login-btn" onclick="adminLogin()">Sign In</button>
+    <div class="login-err" id="login-err">Invalid credentials or not authorised.</div>
+  </div>
+</div>
+
+<!-- ADMIN SCREEN -->
+<div id="admin-screen">
+  <div class="top-bar">
+    <div class="brand">ResumeAI <span>SA</span> — Admin</div>
+    <div style="display:flex;align-items:center;gap:14px;">
+      <span class="user-info" id="admin-user-label"></span>
+      <button class="logout-btn" onclick="adminLogout()">Sign Out</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="page-title">📊 Dashboard</div>
+
+    <!-- STATS -->
+    <div class="stat-grid">
+      <div class="stat-card">
+        <div class="stat-num" id="stat-cvs">—</div>
+        <div class="stat-label">Total CVs Generated</div>
+      </div>
+      <div class="stat-card gold">
+        <div class="stat-num" id="stat-users">—</div>
+        <div class="stat-label">Registered Users</div>
+      </div>
+      <div class="stat-card blue">
+        <div class="stat-num" id="stat-payments">—</div>
+        <div class="stat-label">Payments Received</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num" id="stat-covers">—</div>
+        <div class="stat-label">Cover Letters</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num" id="stat-bios">—</div>
+        <div class="stat-label">LinkedIn Bios</div>
+      </div>
+      <div class="stat-card red">
+        <div class="stat-num" id="stat-today">—</div>
+        <div class="stat-label">Activity Today</div>
+      </div>
+    </div>
+
+    <!-- TABS -->
+    <div class="tabs">
+      <div class="tab active" onclick="switchTab('cvs')">CVs</div>
+      <div class="tab" onclick="switchTab('users')">Users</div>
+      <div class="tab" onclick="switchTab('payments')">Payments</div>
+      <div class="tab" onclick="switchTab('extras')">Cover Letters & Bios</div>
+    </div>
+
+    <!-- CVs TAB -->
+    <div class="tab-content active" id="tab-cvs">
+      <div class="table-wrap">
+        <div class="table-header">
+          <h3>All CVs Generated</h3>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span class="count" id="cv-count"></span>
+            <button class="refresh-btn" onclick="loadCVs()">↺ Refresh</button>
+          </div>
+        </div>
+        <div id="cvs-table-body"><div class="loading">Loading CVs…</div></div>
+      </div>
+    </div>
+
+    <!-- USERS TAB -->
+    <div class="tab-content" id="tab-users">
+      <div class="table-wrap">
+        <div class="table-header">
+          <h3>Registered Users</h3>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span class="count" id="user-count"></span>
+            <button class="refresh-btn" onclick="loadUsers()">↺ Refresh</button>
+          </div>
+        </div>
+        <div id="users-table-body"><div class="loading">Loading users…</div></div>
+      </div>
+    </div>
+
+    <!-- PAYMENTS TAB -->
+    <div class="tab-content" id="tab-payments">
+      <div class="table-wrap">
+        <div class="table-header">
+          <h3>Payment Logs</h3>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span class="count" id="payment-count"></span>
+            <button class="refresh-btn" onclick="loadPayments()">↺ Refresh</button>
+          </div>
+        </div>
+        <div id="payments-table-body"><div class="loading">Loading payments…</div></div>
+      </div>
+    </div>
+
+    <!-- EXTRAS TAB -->
+    <div class="tab-content" id="tab-extras">
+      <div class="table-wrap" style="margin-bottom:20px;">
+        <div class="table-header">
+          <h3>Cover Letters</h3>
+          <button class="refresh-btn" onclick="loadExtras()">↺ Refresh</button>
+        </div>
+        <div id="covers-table-body"><div class="loading">Loading…</div></div>
+      </div>
+      <div class="table-wrap">
+        <div class="table-header">
+          <h3>LinkedIn Bios</h3>
+        </div>
+        <div id="bios-table-body"><div class="loading">Loading…</div></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL  = 'https://jrkesmwqpwrjqxufazvs.supabase.co';
+const SUPABASE_KEY  = 'sb_publishable_JljqsXyZ1W1JYNlWDmBNog_TZcW9hcN';
+const ADMIN_EMAIL   = 'glowmama4@gmail.com';
+
+let sb = null;
+let adminUser = null;
+
+function initSupabase() {
+  if (sb) return sb;
+  sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+    auth: { persistSession: true, storageKey: 'resumeai-admin' }
+  });
+  return sb;
+}
+
+async function adminLogin() {
+  const email = document.getElementById('admin-email').value.trim();
+  const pass  = document.getElementById('admin-pass').value;
+  const err   = document.getElementById('login-err');
+  err.style.display = 'none';
+
+  if (email.toLowerCase() !== ADMIN_EMAIL) {
+    err.style.display = 'block';
+    err.textContent = 'You are not authorised to access this dashboard.';
+    return;
+  }
+
+  initSupabase();
+  const { data, error } = await sb.auth.signInWithPassword({ email, password: pass });
+  if (error || !data.user) {
+    err.style.display = 'block';
+    err.textContent = 'Sign in failed: ' + (error?.message || 'Unknown error');
+    return;
+  }
+  adminUser = data.user;
+  showAdmin();
+}
+
+async function checkExistingSession() {
+  initSupabase();
+  const { data } = await sb.auth.getSession();
+  if (data?.session?.user?.email?.toLowerCase() === ADMIN_EMAIL) {
+    adminUser = data.session.user;
+    showAdmin();
+  }
+}
+
+function showAdmin() {
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('admin-screen').style.display = 'block';
+  document.getElementById('admin-user-label').textContent = adminUser.email;
+  loadAll();
+}
+
+async function adminLogout() {
+  await sb.auth.signOut();
+  location.reload();
+}
+
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach((t,i) => {
+    const names = ['cvs','users','payments','extras'];
+    t.classList.toggle('active', names[i] === name);
+  });
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  document.getElementById('tab-'+name).classList.add('active');
+}
+
+function fmt(dateStr) {
+  if (!dateStr) return '—';
+  const d = new Date(dateStr);
+  return d.toLocaleDateString('en-ZA', {day:'2-digit',month:'short',year:'numeric'}) + ' ' +
+         d.toLocaleTimeString('en-ZA', {hour:'2-digit',minute:'2-digit'});
+}
+
+function truncate(str, n=60) {
+  if (!str) return '—';
+  return str.length > n ? str.slice(0,n)+'…' : str;
+}
+
+async function loadAll() {
+  loadCVs();
+  loadUsers();
+  loadPayments();
+  loadExtras();
+}
+
+async function loadCVs() {
+  document.getElementById('cvs-table-body').innerHTML = '<div class="loading">Loading…</div>';
+  const { data, error } = await sb.from('cvs').select('*').order('created_at', {ascending:false}).limit(200);
+  if (error || !data) {
+    document.getElementById('cvs-table-body').innerHTML = '<div class="empty-state">Could not load CVs.<br><small>Make sure the cvs table exists in Supabase.</small></div>';
+    document.getElementById('stat-cvs').textContent = '—';
+    return;
+  }
+  document.getElementById('stat-cvs').textContent = data.length;
+  document.getElementById('cv-count').textContent = data.length + ' total';
+  const today = new Date().toDateString();
+  const todayCount = data.filter(r => new Date(r.created_at).toDateString() === today).length;
+  document.getElementById('stat-today').textContent = todayCount;
+
+  if (!data.length) {
+    document.getElementById('cvs-table-body').innerHTML = '<div class="empty-state">No CVs yet.</div>';
+    return;
+  }
+  let html = `<table><thead><tr><th>#</th><th>Date</th><th>Name on CV</th><th>Type</th><th>CV Preview</th></tr></thead><tbody>`;
+  data.forEach((r,i) => {
+    html += `<tr>
+      <td>${i+1}</td>
+      <td>${fmt(r.created_at)}</td>
+      <td>${r.full_name || r.user_email || '—'}</td>
+      <td>${r.path || r.type || '—'}</td>
+      <td class="cv-preview">${truncate(r.cv_text || r.content || '', 80)}</td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  document.getElementById('cvs-table-body').innerHTML = html;
+}
+
+async function loadUsers() {
+  document.getElementById('users-table-body').innerHTML = '<div class="loading">Loading…</div>';
+  const { data, error } = await sb.from('profiles').select('*').order('created_at', {ascending:false}).limit(200);
+  if (error || !data) {
+    document.getElementById('users-table-body').innerHTML = '<div class="empty-state">Could not load users.<br><small>Make sure the profiles table exists in Supabase.</small></div>';
+    document.getElementById('stat-users').textContent = '—';
+    return;
+  }
+  document.getElementById('stat-users').textContent = data.length;
+  document.getElementById('user-count').textContent = data.length + ' registered';
+
+  if (!data.length) {
+    document.getElementById('users-table-body').innerHTML = '<div class="empty-state">No users yet.</div>';
+    return;
+  }
+  let html = `<table><thead><tr><th>#</th><th>Name</th><th>Email</th><th>Credits</th><th>Plan</th><th>Joined</th></tr></thead><tbody>`;
+  data.forEach((r,i) => {
+    const plan = r.credits >= 10 ? 'pro' : r.credits >= 3 ? 'starter' : 'free';
+    html += `<tr>
+      <td>${i+1}</td>
+      <td>${r.full_name || '—'}</td>
+      <td>${r.email || '—'}</td>
+      <td><strong>${r.credits ?? 0}</strong></td>
+      <td><span class="badge ${plan}">${plan.toUpperCase()}</span></td>
+      <td>${fmt(r.created_at)}</td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  document.getElementById('users-table-body').innerHTML = html;
+}
+
+async function loadPayments() {
+  document.getElementById('payments-table-body').innerHTML = '<div class="loading">Loading…</div>';
+  const { data, error } = await sb.from('payment_logs').select('*').order('created_at', {ascending:false}).limit(200);
+  if (error || !data) {
+    document.getElementById('payments-table-body').innerHTML = '<div class="empty-state">Could not load payments.<br><small>Make sure the payment_logs table exists in Supabase.</small></div>';
+    document.getElementById('stat-payments').textContent = '—';
+    return;
+  }
+  document.getElementById('stat-payments').textContent = data.length;
+  document.getElementById('payment-count').textContent = data.length + ' transactions';
+
+  if (!data.length) {
+    document.getElementById('payments-table-body').innerHTML = '<div class="empty-state">No payments yet.</div>';
+    return;
+  }
+  let html = `<table><thead><tr><th>#</th><th>Date</th><th>Email / User</th><th>Amount</th><th>Plan</th><th>Status</th><th>PayFast ID</th></tr></thead><tbody>`;
+  data.forEach((r,i) => {
+    const amt = r.amount ? 'R'+Number(r.amount).toFixed(2) : '—';
+    html += `<tr>
+      <td>${i+1}</td>
+      <td>${fmt(r.created_at)}</td>
+      <td>${r.email || r.user_id || '—'}</td>
+      <td><strong>${amt}</strong></td>
+      <td>${r.plan || '—'}</td>
+      <td>${r.status || 'complete'}</td>
+      <td><small>${r.pf_payment_id || r.payment_id || '—'}</small></td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  document.getElementById('payments-table-body').innerHTML = html;
+}
+
+async function loadExtras() {
+  // Cover letters
+  const { data: covers } = await sb.from('cover_letters').select('*').order('created_at',{ascending:false}).limit(100).catch(()=>({data:null}));
+  document.getElementById('stat-covers').textContent = covers?.length ?? '—';
+  if (!covers || !covers.length) {
+    document.getElementById('covers-table-body').innerHTML = '<div class="empty-state">No cover letters yet.</div>';
+  } else {
+    let html = `<table><thead><tr><th>#</th><th>Date</th><th>User</th><th>Preview</th></tr></thead><tbody>`;
+    covers.forEach((r,i) => {
+      html += `<tr><td>${i+1}</td><td>${fmt(r.created_at)}</td><td>${r.user_id||'—'}</td><td class="cv-preview">${truncate(r.content,80)}</td></tr>`;
+    });
+    document.getElementById('covers-table-body').innerHTML = html + '</tbody></table>';
+  }
+
+  // LinkedIn bios
+  const { data: bios } = await sb.from('linkedin_bios').select('*').order('created_at',{ascending:false}).limit(100).catch(()=>({data:null}));
+  document.getElementById('stat-bios').textContent = bios?.length ?? '—';
+  if (!bios || !bios.length) {
+    document.getElementById('bios-table-body').innerHTML = '<div class="empty-state">No LinkedIn bios yet.</div>';
+  } else {
+    let html = `<table><thead><tr><th>#</th><th>Date</th><th>User</th><th>Preview</th></tr></thead><tbody>`;
+    bios.forEach((r,i) => {
+      html += `<tr><td>${i+1}</td><td>${fmt(r.created_at)}</td><td>${r.user_id||'—'}</td><td class="cv-preview">${truncate(r.content,80)}</td></tr>`;
+    });
+    document.getElementById('bios-table-body').innerHTML = html + '</tbody></table>';
+  }
+}
+
+// Auto-check session on load
+checkExistingSession();
+</script>
+</body>
+</html>
