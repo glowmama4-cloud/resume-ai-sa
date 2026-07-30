@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Careers — Full-Time Jobs | ResumeAI SA</title>
+<meta name="description" content="Full-time jobs from around the world, remote and in-office. Apply directly with the CV you built on ResumeAI SA.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --sa-green:   #007A4D;
+    --sa-green-d: #005C39;
+    --sa-gold:    #D4A017;
+    --sa-red:     #C0392B;
+    --ink:        #16161a;
+    --ink2:       #4a4a6a;
+    --ink3:       #9090aa;
+    --surf:       #ffffff;
+    --surf2:      #f7f6f2;
+    --surf3:      #f0ede6;
+    --border:     #e2dfd8;
+    --border2:    #ccc9c0;
+    --green-bg:   #e8f5ee;
+    --green-txt:  #005C39;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: 'Sora', sans-serif;
+    background: var(--surf2);
+    color: var(--ink);
+  }
+  .wrap {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 32px 20px 80px;
+  }
+  .eyebrow {
+    display: inline-block;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--sa-green-d);
+    background: var(--green-bg);
+    padding: 4px 10px;
+    border-radius: 999px;
+    margin-bottom: 12px;
+  }
+  h1 {
+    font-size: 28px;
+    font-weight: 700;
+    margin: 0 0 6px;
+  }
+  .sub {
+    color: var(--ink2);
+    margin: 0 0 24px;
+    font-size: 15px;
+  }
+  .search {
+    width: 100%;
+    padding: 12px 16px;
+    border-radius: 12px;
+    border: 1px solid var(--border2);
+    background: var(--surf);
+    font-family: inherit;
+    font-size: 15px;
+    outline: none;
+  }
+  .search:focus {
+    border-color: var(--sa-green);
+  }
+  .list {
+    margin-top: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .card {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    background: var(--surf);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 16px;
+    transition: border-color 0.15s ease;
+  }
+  .card:hover {
+    border-color: var(--sa-green);
+  }
+  .logo {
+    flex-shrink: 0;
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    background: var(--surf3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    color: var(--ink3);
+    overflow: hidden;
+  }
+  .logo img { width: 100%; height: 100%; object-fit: cover; }
+  .info { flex: 1; min-width: 0; }
+  .title {
+    font-weight: 600;
+    font-size: 15px;
+    margin: 0 0 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .company {
+    color: var(--ink2);
+    font-size: 13px;
+    margin: 0 0 8px;
+  }
+  .tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .tag {
+    font-size: 11px;
+    background: var(--surf3);
+    color: var(--ink2);
+    padding: 3px 8px;
+    border-radius: 999px;
+  }
+  .tag.salary {
+    background: var(--green-bg);
+    color: var(--green-txt);
+  }
+  .apply {
+    flex-shrink: 0;
+    background: var(--sa-green);
+    color: #fff;
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 9px 16px;
+    border-radius: 10px;
+    white-space: nowrap;
+    transition: background 0.15s ease;
+  }
+  .apply:hover {
+    background: var(--sa-green-d);
+  }
+  .empty, .loading {
+    color: var(--ink3);
+    font-size: 14px;
+    padding: 24px 4px;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <span class="eyebrow">Careers</span>
+  <h1>Find your next full-time role</h1>
+  <p class="sub">Full-time jobs from around the world — remote and in-office — apply straight to the employer.</p>
+
+  <input type="text" id="search" class="search" placeholder="Search job title or company">
+
+  <div class="list" id="jobList">
+    <div class="loading">Loading jobs…</div>
+  </div>
+</div>
+
+<script>
+  const jobListEl = document.getElementById('jobList');
+  const searchEl = document.getElementById('search');
+  let debounceTimer;
+
+  function timeAgo(dateStr) {
+    if (!dateStr) return '';
+    const days = Math.floor((Date.now() - new Date(dateStr).getTime()) / 86400000);
+    if (days <= 0) return 'Today';
+    if (days === 1) return 'Yesterday';
+    if (days < 30) return days + 'd ago';
+    return new Date(dateStr).toLocaleDateString();
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str || '';
+    return div.innerHTML;
+  }
+
+  function renderJobs(jobs) {
+    if (!jobs || jobs.length === 0) {
+      jobListEl.innerHTML = '<div class="empty">No jobs match right now — check back soon.</div>';
+      return;
+    }
+    jobListEl.innerHTML = jobs.map(function (job) {
+      const initial = (job.company_name || '?').charAt(0).toUpperCase();
+      const logo = job.company_logo_url
+        ? '<img src="' + escapeHtml(job.company_logo_url) + '" alt="">'
+        : initial;
+      const salaryTag = job.salary_text
+        ? '<span class="tag salary">' + escapeHtml(job.salary_text) + '</span>'
+        : '';
+      return (
+        '<div class="card">' +
+          '<div class="logo">' + logo + '</div>' +
+          '<div class="info">' +
+            '<p class="title">' + escapeHtml(job.title) + '</p>' +
+            '<p class="company">' + escapeHtml(job.company_name) + '</p>' +
+            '<div class="tags">' +
+              '<span class="tag">' + escapeHtml(job.location || 'Worldwide') + '</span>' +
+              salaryTag +
+              '<span class="tag">' + timeAgo(job.posted_at) + '</span>' +
+            '</div>' +
+          '</div>' +
+          '<a class="apply" href="' + escapeHtml(job.apply_url) + '" target="_blank" rel="noopener noreferrer">Apply</a>' +
+        '</div>'
+      );
+    }).join('');
+  }
+
+  function loadJobs() {
+    jobListEl.innerHTML = '<div class="loading">Loading jobs…</div>';
+    const params = new URLSearchParams();
+    const search = searchEl.value.trim();
+    if (search) params.set('search', search);
+
+    fetch('/api/jobs?' + params.toString())
+      .then(function (res) { return res.json(); })
+      .then(function (data) { renderJobs(data.jobs); })
+      .catch(function () {
+        jobListEl.innerHTML = '<div class="empty">Couldn\'t load jobs right now — try refreshing.</div>';
+      });
+  }
+
+  searchEl.addEventListener('input', function () {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(loadJobs, 300);
+  });
+
+  loadJobs();
+</script>
+
+</body>
+</html>
