@@ -151,7 +151,14 @@ async function fetchAdzuna() {
 export default async function handler(req, res) {
   const authHeader = req.headers.authorization;
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return res.status(401).json({ error: 'Unauthorized' });
+    return res.status(401).json({
+      error: 'Unauthorized',
+      debug: {
+        received: authHeader ? authHeader.slice(0, 15) + '...' : 'NONE',
+        receivedLength: authHeader ? authHeader.length : 0,
+        expectedLength: process.env.CRON_SECRET ? process.env.CRON_SECRET.length : 0,
+      },
+    });
   }
 
   if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
