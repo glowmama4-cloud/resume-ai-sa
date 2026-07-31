@@ -1,3 +1,7 @@
+// Pulls remote, full-time jobs from 5 free public job APIs, cleans them into
+// one consistent shape, and saves them into your Supabase `jobs` table.
+// Protected by CRON_SECRET so only you (or a scheduled job) can trigger it.
+
 function guessEmploymentType(raw) {
   if (!raw) return 'unknown';
   const r = String(raw).toLowerCase();
@@ -114,7 +118,7 @@ async function fetchRemoteOK() {
 async function fetchAdzuna() {
   const appId = process.env.ADZUNA_APP_ID;
   const appKey = process.env.ADZUNA_APP_KEY;
-  if (!appId || !appKey) return [];
+  if (!appId || !appKey) return []; // optional source, skip if not configured
 
   const countries = ['us', 'gb', 'za', 'au', 'ca', 'de'];
   const results = [];
@@ -150,15 +154,11 @@ async function fetchAdzuna() {
 
 export default async function handler(req, res) {
   const authHeader = req.headers.authorization;
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return res.status(401).json({
-      error: 'Unauthorized',
-      debug: {
-        received: authHeader ? authHeader.slice(0, 15) + '...' : 'NONE',
-        receivedLength: authHeader ? authHeader.length : 0,
-        expectedLength: process.env.CRON_SECRET ? process.env.CRON_SECRET.length : 0,
-      },
-    });
+  const querySecret = req.query.secret;
+  const validHeader = authHeader === `Bearer ${process.env.CRON_SECRET}`;
+  const validQuery = querySecret && querySecret === process.env.CRON_SECRET;
+  if (!validHeader && !validQuery) {
+    return res.status(401).json({ error: 'Unauthorized' });
   }
 
   if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
