@@ -11,6 +11,12 @@ function guessEmploymentType(raw) {
   return 'unknown';
 }
 
+function toTagArray(v) {
+  if (Array.isArray(v)) return v.map((t) => String(t)).slice(0, 20);
+  if (typeof v === 'string' && v.trim()) return v.split(',').map((t) => t.trim()).slice(0, 20);
+  return [];
+}
+
 async function fetchArbeitnow() {
   try {
     const r = await fetch('https://www.arbeitnow.com/api/job-board-api');
@@ -28,7 +34,7 @@ async function fetchArbeitnow() {
       salary_text: null,
       description: j.description ? String(j.description).slice(0, 2000) : null,
       apply_url: j.url,
-      tags: j.tags || [],
+      tags: toTagArray(j.tags),
       posted_at: j.created_at ? new Date(j.created_at * 1000).toISOString() : null,
     }));
   } catch {
@@ -53,7 +59,7 @@ async function fetchRemotive() {
       salary_text: j.salary || null,
       description: j.description ? String(j.description).slice(0, 2000) : null,
       apply_url: j.url,
-      tags: j.tags || [],
+      tags: toTagArray(j.tags),
       posted_at: j.publication_date ? new Date(j.publication_date).toISOString() : null,
     }));
   } catch {
@@ -78,7 +84,7 @@ async function fetchHimalayas() {
       salary_text: j.minSalary && j.maxSalary ? `${j.minSalary}-${j.maxSalary}` : null,
       description: j.description ? String(j.description).slice(0, 2000) : null,
       apply_url: j.applicationLink || j.url,
-      tags: j.tags || j.skills || [],
+      tags: toTagArray(j.tags || j.skills),
       posted_at: j.publishedAt ? new Date(j.publishedAt * 1000).toISOString() : null,
     }));
   } catch {
@@ -107,7 +113,7 @@ async function fetchRemoteOK() {
         salary_text: j.salary_min && j.salary_max ? `${j.salary_min}-${j.salary_max}` : null,
         description: j.description ? String(j.description).slice(0, 2000) : null,
         apply_url: j.url || `https://remoteok.com/remote-jobs/${j.id}`,
-        tags: j.tags || [],
+        tags: toTagArray(j.tags),
         posted_at: j.date ? new Date(j.date).toISOString() : null,
       }));
   } catch {
@@ -178,6 +184,7 @@ export default async function handler(req, res) {
     if (r.status === 'fulfilled') jobs.push(...r.value);
   }
   jobs = jobs.filter((j) => j.title && j.company_name && j.apply_url);
+  jobs = jobs.map((j) => ({ ...j, tags: toTagArray(j.tags) }));
 
   if (jobs.length === 0) {
     return res.status(502).json({ ok: false, message: 'No jobs fetched from any source' });
