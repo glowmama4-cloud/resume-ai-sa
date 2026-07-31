@@ -17,6 +17,15 @@ function toTagArray(v) {
   return [];
 }
 
+function titleCaseSlug(slug) {
+  if (!slug) return 'Unknown';
+  return String(slug)
+    .split('-')
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+}
+
 async function fetchArbeitnow() {
   try {
     const r = await fetch('https://www.arbeitnow.com/api/job-board-api');
@@ -76,8 +85,8 @@ async function fetchHimalayas() {
       source: 'himalayas',
       source_job_id: String(j.id ?? j.guid ?? j.slug),
       title: j.title,
-      company_name: j.companyName,
-      company_logo_url: j.companyLogo || null,
+      company_name: titleCaseSlug(j.companySlug) || j.companyName || 'Unknown',
+      company_logo_url: null, // Himalayas free API returns a placeholder, not a real logo URL
       location: (j.locationRestrictions && j.locationRestrictions.join(', ')) || 'Worldwide',
       is_remote: true,
       employment_type: guessEmploymentType(j.employmentType || j.type),
