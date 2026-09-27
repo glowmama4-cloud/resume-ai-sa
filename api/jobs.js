@@ -7,7 +7,11 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Supabase not configured on server.' });
   }
 
-  const search = (req.query.search || '').trim();
+  // Strip characters that are meaningful in a PostgREST filter expression
+  // (commas/parens can otherwise be used to inject extra filter clauses
+  // into the `or=(...)` string built below). Jobs data is public either
+  // way, but there's no reason to let a search box alter query structure.
+  const search = (req.query.search || '').trim().replace(/[(),]/g, '');
   const employmentType = req.query.employment_type || 'full_time';
   const page = parseInt(req.query.page || '1', 10);
   const pageSize = 20;
