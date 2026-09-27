@@ -168,11 +168,18 @@ async function fetchAdzuna() {
 }
 
 export default async function handler(req, res) {
+  // Header-only auth. Vercel's native Cron adds
+  // `Authorization: Bearer ${CRON_SECRET}` automatically to scheduled
+  // requests once the CRON_SECRET env var is set — no secret needs to
+  // appear in vercel.json or in any URL/query string.
+  if (!process.env.CRON_SECRET) {
+    console.error('jobs-sync: CRON_SECRET not configured on server');
+    return res.status(500).json({ error: 'Server not configured correctly.' });
+  }
+
   const authHeader = req.headers.authorization;
-  const querySecret = req.query.secret;
   const validHeader = authHeader === `Bearer ${process.env.CRON_SECRET}`;
-  const validQuery = querySecret && querySecret === process.env.CRON_SECRET;
-  if (!validHeader && !validQuery) {
+  if (!validHeader) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
