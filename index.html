@@ -396,13 +396,13 @@ footer a{color:var(--sa-green);text-decoration:none;}
 
   <!-- GUEST NOTICE -->
   <div class="guest-notice" id="guest-notice">
-    💡 You're using ResumeAI SA as a guest. <a onclick="openAuth()">Sign in or register free</a> to save your credits and history.
+    💡 <a onclick="openAuth()">Sign in or register free</a> to get your first CV credit and start building.
   </div>
 
   <!-- CREDITS BAR -->
   <div class="credits-bar" id="credits-bar">
     <span>Your credits:</span>
-    <span class="credit-badge" id="credits-display">1 free CV remaining</span>
+    <span class="credit-badge" id="credits-display">Sign in to get more free CVs</span>
     <span>·</span>
     <a href="#pricing" style="font-size:12px;color:var(--sa-green);">Get more →</a>
   </div>
@@ -756,7 +756,11 @@ let currentPath   = '';
 let selectedPlan  = 'starter';
 let loadTimer     = null;
 let currentUser   = null;
-let guestCredits  = 1;
+// Anonymous generation is no longer available — /api/generate now requires
+// a signed-in, verified Supabase user (see PRIORITY 1, Phase 2). Guests are
+// sent to the sign-up flow instead, where a new profile already starts
+// with 1 free credit.
+let guestCredits  = 0;
 let serverCredits = 0;
 let creditsPollTimer = null;
 
@@ -947,13 +951,12 @@ function getCredits() {
   return currentUser ? serverCredits : guestCredits;
 }
 
-async function useCredit() {
-  if (currentUser) {
-    serverCredits = Math.max(0, serverCredits - 1);
-    const sb = getSupabase();
-    if (sb) await sb.from('profiles').update({ credits: serverCredits }).eq('id', currentUser.id);
-  } else {
-    guestCredits = Math.max(0, guestCredits - 1);
+// Credits are no longer written from the browser at all. /api/generate
+// deducts (and, on failure, refunds) the credit server-side and tells us
+// the resulting balance — this just reflects that number in the UI.
+function applyCreditsFromServer(creditsRemaining) {
+  if (typeof creditsRemaining === 'number') {
+    serverCredits = creditsRemaining;
   }
   updateCreditsDisplay();
 }
@@ -1507,12 +1510,17 @@ async function generate(path) {
   hideErrs();
   if (!validate(path)) return;
 
+  // AI generation now always requires a signed-in user — the server
+  // enforces this too, but checking here avoids a pointless round trip
+  // and gives a clearer prompt than a generic error.
+  if (!currentUser) {
+    openAuth();
+    return;
+  }
+
   if (getCredits() <= 0) {
-    if (!currentUser) { openAuth(); }
-    else {
-      document.getElementById('paywall').classList.remove('hide');
-      document.getElementById('paywall').scrollIntoView({behavior:'smooth',block:'center'});
-    }
+    document.getElementById('paywall').classList.remove('hide');
+    document.getElementById('paywall').scrollIntoView({behavior:'smooth',block:'center'});
     return;
   }
 
@@ -1522,9 +1530,9 @@ async function generate(path) {
 
   try {
     const prompt = buildPrompt(path);
-    const rawResult = await callAI(prompt);
+    const { text: rawResult, creditsRemaining } = await callAI(prompt);
     const { text: result, removedHeadings } = stripPlaceholders(rawResult);
-    await useCredit();
+    applyCreditsFromServer(creditsRemaining);
     hideLoading();
     currentCV = result;
     document.getElementById('resume-doc').innerHTML = renderCVAsHTML(result);
@@ -1543,10 +1551,26 @@ async function generate(path) {
 }
 
 /* ── API CALL ── */
+async function getAccessToken() {
+  const sb = getSupabase();
+  if (!sb) return null;
+  const { data } = await sb.auth.getSession();
+  return data?.session?.access_token || null;
+}
+
 async function callAI(prompt) {
+  const accessToken = await getAccessToken();
+  if (!accessToken) {
+    openAuth();
+    throw new Error('Please sign in to generate a document.');
+  }
+
   const resp = await fetch(CONFIG.API_ENDPOINT, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
     body: JSON.stringify({ prompt })
   });
   if (!resp.ok) {
@@ -1554,7 +1578,7 @@ async function callAI(prompt) {
     throw new Error(e.error || 'Something went wrong. Please try again in a moment.');
   }
   const data = await resp.json();
-  return data.text || data.content || '';
+  return { text: data.text || data.content || '', creditsRemaining: data.creditsRemaining };
 }
 
 /* ── SAVE CV TO HISTORY ── */
@@ -1890,11 +1914,13 @@ async function generateCoverLetter() {
   btn.textContent = '⏳ Generating...';
   btn.disabled = true;
   try {
-    const res = await fetch(CONFIG.API_ENDPOINT, {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({
-        prompt: `You are a professional South African career coach. Based on the following CV, write a compelling, professional cover letter for a job application. 
+    // NOTE: this now goes through the same authenticated, credit-gated
+    // /api/generate as the main CV flow (see Phase 2 security report —
+    // this endpoint can no longer allow unauthenticated or uncredited
+    // calls at all, from any caller). That means this "Pro extra" now
+    // also spends one credit. Flagged for confirmation — see report.
+    const { text: rawText, creditsRemaining } = await callAI(
+      `You are a professional South African career coach. Based on the following CV, write a compelling, professional cover letter for a job application. 
 
 The cover letter should:
 - Be 3-4 paragraphs
@@ -1910,12 +1936,9 @@ CV CONTENT:
 ${currentCV}
 
 Write ONLY the cover letter body (no headers like "Dear Hiring Manager" — just the paragraphs). Start directly with the opening paragraph.`
-      })
-    });
-    const data = await res.json();
-    if (data.error) throw new Error(data.error);
-    const text = data.cv || data.result || data.text || '';
-    const clean = text.replace(/#{1,3}\s*/g,'').replace(/\*\*(.*?)\*\*/g,'$1').replace(/\*(.*?)\*/g,'$1').trim();
+    );
+    applyCreditsFromServer(creditsRemaining);
+    const clean = rawText.replace(/#{1,3}\s*/g,'').replace(/\*\*(.*?)\*\*/g,'$1').replace(/\*(.*?)\*/g,'$1').trim();
     document.getElementById('cover-letter-doc').innerText = clean;
     document.getElementById('cover-letter-output').classList.remove('hide');
     btn.textContent = '✅ Done — Regenerate';
@@ -1928,7 +1951,7 @@ Write ONLY the cover letter body (no headers like "Dear Hiring Manager" — just
   } catch(e) {
     btn.textContent = 'Generate Cover Letter';
     btn.disabled = false;
-    alert('Could not generate cover letter. Please try again.');
+    alert(e.message || 'Could not generate cover letter. Please try again.');
   }
 }
 
@@ -1938,11 +1961,10 @@ async function generateLinkedInBio() {
   btn.textContent = '⏳ Generating...';
   btn.disabled = true;
   try {
-    const res = await fetch(CONFIG.API_ENDPOINT, {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({
-        prompt: `You are a professional LinkedIn profile coach. Based on the following CV, write a compelling LinkedIn About section (bio).
+    // NOTE: same as the cover letter flow above — this now goes through
+    // the authenticated, credit-gated /api/generate and spends a credit.
+    const { text: rawText, creditsRemaining } = await callAI(
+      `You are a professional LinkedIn profile coach. Based on the following CV, write a compelling LinkedIn About section (bio).
 
 The LinkedIn bio should:
 - Be 150-250 words
@@ -1959,12 +1981,9 @@ CV CONTENT:
 ${currentCV}
 
 Write ONLY the bio text. Start directly with the opening line.`
-      })
-    });
-    const data = await res.json();
-    if (data.error) throw new Error(data.error);
-    const text = data.cv || data.result || data.text || '';
-    const clean = text.replace(/#{1,3}\s*/g,'').replace(/\*\*(.*?)\*\*/g,'$1').replace(/\*(.*?)\*/g,'$1').trim();
+    );
+    applyCreditsFromServer(creditsRemaining);
+    const clean = rawText.replace(/#{1,3}\s*/g,'').replace(/\*\*(.*?)\*\*/g,'$1').replace(/\*(.*?)\*/g,'$1').trim();
     document.getElementById('linkedin-doc').innerText = clean;
     document.getElementById('linkedin-output').classList.remove('hide');
     btn.textContent = '✅ Done — Regenerate';
@@ -1977,7 +1996,7 @@ Write ONLY the bio text. Start directly with the opening line.`
   } catch(e) {
     btn.textContent = 'Generate LinkedIn Bio';
     btn.disabled = false;
-    alert('Could not generate LinkedIn bio. Please try again.');
+    alert(e.message || 'Could not generate LinkedIn bio. Please try again.');
   }
 }
 
