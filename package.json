@@ -1,0 +1,8 @@
+{
+  "name": "resume-ai-sa",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "pdfjs-dist": "^3.11.174"
+  }
+}
