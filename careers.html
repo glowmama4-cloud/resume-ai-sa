@@ -225,12 +225,12 @@
     background: var(--sa-green);
     color: #fff;
     text-decoration: none;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 600;
-    padding: 9px 16px;
+    padding: 9px 14px;
     border-radius: 10px;
-    white-space: nowrap;
     text-align: center;
+    line-height: 1.3;
     transition: background 0.15s ease;
     border: none;
     cursor: pointer;
@@ -308,6 +308,7 @@
     <button class="tab" data-tab="remote">Remote</button>
     <button class="tab" data-tab="south_africa">South Africa</button>
     <button class="tab" data-tab="international">International</button>
+    <button class="tab" data-tab="government">Government</button>
   </div>
 
   <div class="filter-row">
@@ -474,12 +475,13 @@
       return;
     }
     const html = jobs.map(function (job) {
+      const isGov = job.government_job === true;
       const initial = (job.company_name || '?').charAt(0).toUpperCase();
       const logo = job.company_logo_url
         ? '<img src="' + escapeHtml(job.company_logo_url) + '" alt="">'
-        : initial;
+        : (isGov ? '🏛' : initial);
       const salaryTag = job.salary_text
-        ? '<span class="tag salary">' + escapeHtml(job.salary_text) + '</span>'
+        ? '<span class="tag salary">' + escapeHtml(job.salary_text) + (job.salary_level ? ' (' + escapeHtml(job.salary_level) + ')' : '') + '</span>'
         : '';
       const remoteLabel = REMOTE_SCOPE_LABELS[job.remote_scope] || '';
       const remoteTag = remoteLabel
@@ -490,6 +492,29 @@
         ? '<span class="tag category">' + escapeHtml(categoryLabel) + '</span>'
         : '';
       const isSaved = savedJobIds.has(job.id);
+
+      const govTags = isGov
+        ? (
+            '<span class="tag category">🏛 Government</span>' +
+            (job.reference_number ? '<span class="tag">Ref: ' + escapeHtml(job.reference_number) + '</span>' : '') +
+            (job.closing_date ? '<span class="tag">Closes ' + escapeHtml(new Date(job.closing_date).toLocaleDateString('en-ZA', {day:'numeric',month:'short',year:'numeric'})) + '</span>' : '') +
+            (job.circular_number ? '<span class="tag">Circular ' + escapeHtml(String(job.circular_number)) + ' of ' + escapeHtml(String(job.circular_year)) + '</span>' : '')
+          )
+        : '';
+
+      // Government applications never go "through" ResumeAI — they follow
+      // whatever the department's own instructions say. We only ever link
+      // to a URL we actually extracted (official_application_url); when one
+      // couldn't be confidently pulled from the PDF, we link to the PDF
+      // itself so the jobseeker can read the real instructions — apply_url
+      // is never a guess and is never the ResumeAI site itself.
+      const applyHref = isGov
+        ? (job.official_application_url || job.official_pdf_url)
+        : job.apply_url;
+      const applyLabel = isGov
+        ? (job.official_application_url ? 'Apply Through Official Government Process' : 'View Original DPSA Vacancy')
+        : 'Apply on Employer Website';
+
       return (
         '<div class="card">' +
           '<div class="logo">' + logo + '</div>' +
@@ -497,15 +522,16 @@
             '<p class="title">' + escapeHtml(job.title) + '</p>' +
             '<p class="company">' + escapeHtml(job.company_name) + '</p>' +
             '<div class="tags">' +
+              govTags +
               '<span class="tag">' + escapeHtml(job.location || 'Worldwide') + '</span>' +
               remoteTag +
               categoryTag +
               salaryTag +
-              '<span class="tag">' + timeAgo(job.posted_at) + '</span>' +
+              (!isGov ? '<span class="tag">' + timeAgo(job.posted_at) + '</span>' : '') +
             '</div>' +
           '</div>' +
           '<div class="actions">' +
-            '<a class="apply" href="' + escapeHtml(job.apply_url) + '" target="_blank" rel="noopener noreferrer">Apply</a>' +
+          '<a class="apply" href="' + escapeHtml(applyHref) + '" target="_blank" rel="noopener noreferrer">' + applyLabel + '</a>' +
             '<button class="save-btn' + (isSaved ? ' saved' : '') + '" data-job-id="' + escapeHtml(job.id) + '">' +
               (isSaved ? '★ Saved' : '☆ Save') +
             '</button>' +
@@ -543,6 +569,8 @@
       params.set('country', 'ZA');
     } else if (activeTab === 'international') {
       params.set('exclude_country', 'ZA');
+    } else if (activeTab === 'government') {
+      params.set('government_job', 'true');
     }
 
     return params;
