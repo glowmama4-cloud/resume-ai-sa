@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>My Job Search | ResumeAI SA</title>
+<meta name="description" content="Your saved jobs and application tracker on ResumeAI SA.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js" crossorigin="anonymous"></script>
+<style>
+  :root {
+    --sa-green:   #007A4D;
+    --sa-green-d: #005C39;
+    --sa-gold:    #D4A017;
+    --sa-red:     #C0392B;
+    --ink:        #16161a;
+    --ink2:       #4a4a6a;
+    --ink3:       #9090aa;
+    --surf:       #ffffff;
+    --surf2:      #f7f6f2;
+    --surf3:      #f0ede6;
+    --border:     #e2dfd8;
+    --border2:    #ccc9c0;
+    --green-bg:   #e8f5ee;
+    --green-txt:  #005C39;
+    --gold-bg:    #fffbeb;
+    --gold-txt:   #92400e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: 'Sora', sans-serif;
+    background: var(--surf2);
+    color: var(--ink);
+  }
+  .wrap {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 32px 20px 80px;
+  }
+  .top-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+  }
+  .eyebrow {
+    display: inline-block;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--sa-green-d);
+    background: var(--green-bg);
+    padding: 4px 10px;
+    border-radius: 999px;
+  }
+  .careers-link {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--sa-green-d);
+    text-decoration: none;
+    background: var(--green-bg);
+    padding: 6px 12px;
+    border-radius: 999px;
+  }
+  .careers-link:hover { background: #d9f0e3; }
+  h1 { font-size: 26px; font-weight: 700; margin: 10px 0 6px; }
+  .sub { color: var(--ink2); margin: 0 0 24px; font-size: 15px; }
+
+  .signed-out {
+    display: none;
+    background: var(--gold-bg);
+    border: 1px solid #f5d88a;
+    color: var(--gold-txt);
+    font-size: 14px;
+    padding: 18px;
+    border-radius: 12px;
+    text-align: center;
+  }
+  .signed-out.show { display: block; }
+  .signed-out a { color: var(--sa-green-d); font-weight: 600; }
+
+  .content { display: none; }
+  .content.show { display: block; }
+
+  .section-title {
+    font-size: 17px;
+    font-weight: 700;
+    margin: 28px 0 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .section-title:first-of-type { margin-top: 0; }
+
+  .list { display: flex; flex-direction: column; gap: 10px; }
+  .empty {
+    color: var(--ink3);
+    font-size: 14px;
+    padding: 18px 4px;
+  }
+
+  .card {
+    background: var(--surf);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 16px;
+  }
+  .card-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 8px;
+  }
+  .job-title { font-weight: 600; font-size: 15px; margin: 0 0 2px; }
+  .job-company { color: var(--ink2); font-size: 13px; }
+
+  .card-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .btn {
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 7px 14px;
+    border-radius: 10px;
+    border: 1.5px solid var(--border2);
+    background: var(--surf);
+    color: var(--ink2);
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-block;
+  }
+  .btn:hover { border-color: var(--sa-green); color: var(--ink); }
+  .btn.primary {
+    background: var(--sa-green);
+    border-color: var(--sa-green);
+    color: #fff;
+  }
+  .btn.primary:hover { background: var(--sa-green-d); }
+  .btn.danger:hover { border-color: var(--sa-red); color: var(--sa-red); }
+
+  .status-badge {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: var(--surf3);
+    color: var(--ink2);
+    text-transform: capitalize;
+  }
+  .status-badge.applied { background: #eff6ff; color: #1e40af; }
+  .status-badge.interview { background: #fef3c7; color: #92400e; }
+  .status-badge.offer { background: var(--green-bg); color: var(--green-txt); }
+  .status-badge.rejected { background: #fef2f2; color: #991b1b; }
+  .status-badge.closed { background: var(--surf3); color: var(--ink3); }
+
+  .app-fields {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .app-fields.full { grid-template-columns: 1fr; }
+  .field label {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--ink3);
+    margin-bottom: 3px;
+  }
+  .field select, .field input, .field textarea {
+    width: 100%;
+    font-family: inherit;
+    font-size: 13px;
+    padding: 7px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--border2);
+    background: var(--surf2);
+  }
+  .field textarea { min-height: 50px; resize: vertical; }
+
+  .loading { color: var(--ink3); font-size: 14px; padding: 18px 4px; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="top-row">
+    <span class="eyebrow">My Job Search</span>
+    <a href="/careers.html" class="careers-link">💼 Find more jobs</a>
+  </div>
+  <h1>Your saved jobs &amp; applications</h1>
+  <p class="sub">Everything you've saved and applied to, in one place.</p>
+
+  <div class="signed-out" id="signedOut">
+    💡 <a href="/?openAuth=1">Sign in or register free</a> to see your saved jobs and applications.
+  </div>
+
+  <div class="content" id="content">
+    <div class="section-title">⭐ Saved Jobs</div>
+    <div class="list" id="savedList"><div class="loading">Loading…</div></div>
+
+    <div class="section-title">📋 Application Tracker</div>
+    <div class="list" id="appList"><div class="loading">Loading…</div></div>
+  </div>
+</div>
+
+<script>
+  const SUPABASE_URL = 'https://jrkesmwqpwrjqxufazvs.supabase.co';
+  const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_JljqsXyZ1W1JYNlWDmBNog_TZcW9hcN';
+  let supabaseClient = null;
+  function getSupabase() {
+    if (supabaseClient) return supabaseClient;
+    try {
+      if (!window.supabase) return null;
+      supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+        auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
+      });
+    } catch (e) {
+      supabaseClient = null;
+    }
+    return supabaseClient;
+  }
+
+  let currentUser = null;
+
+  const signedOutEl = document.getElementById('signedOut');
+  const contentEl   = document.getElementById('content');
+  const savedListEl = document.getElementById('savedList');
+  const appListEl   = document.getElementById('appList');
+
+  const STATUSES = ['saved', 'planning_to_apply', 'applied', 'interview', 'offer', 'rejected', 'closed'];
+  const STATUS_LABELS = {
+    saved: 'Saved',
+    planning_to_apply: 'Planning to Apply',
+    applied: 'Applied',
+    interview: 'Interview',
+    offer: 'Offer',
+    rejected: 'Rejected',
+    closed: 'Closed',
+  };
+
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str || '';
+    return div.innerHTML;
+  }
+
+  function fmtDate(d) {
+    if (!d) return '';
+    return new Date(d).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
+  }
+
+  /* ── Saved jobs ── */
+  async function loadSavedJobs() {
+    const sb = getSupabase();
+    savedListEl.innerHTML = '<div class="loading">Loading…</div>';
+    try {
+      const { data, error } = await sb
+        .from('saved_jobs')
+        .select('id, created_at, jobs(id, title, company_name, location, apply_url, is_active)')
+        .eq('user_id', currentUser.id)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      if (!data || data.length === 0) {
+        savedListEl.innerHTML = '<div class="empty">No saved jobs yet. <a href="/careers.html">Browse jobs</a> and tap Save on anything that interests you.</div>';
+        return;
+      }
+
+      savedListEl.innerHTML = data.map(function (row) {
+        const job = row.jobs;
+        if (!job) {
+          // Job record no longer exists (shouldn't normally happen — jobs are
+          // deactivated, not deleted — but handled defensively).
+          return '';
+        }
+        const closedTag = job.is_active === false
+          ? '<span class="status-badge closed">No longer active</span>'
+          : '';
+        return (
+          '<div class="card">' +
+            '<div class="card-top">' +
+              '<div>' +
+                '<p class="job-title">' + escapeHtml(job.title) + '</p>' +
+                '<p class="job-company">' + escapeHtml(job.company_name) + (job.location ? ' · ' + escapeHtml(job.location) : '') + '</p>' +
+              '</div>' +
+              closedTag +
+            '</div>' +
+            '<div class="card-actions">' +
+              '<a class="btn primary" href="' + escapeHtml(job.apply_url) + '" target="_blank" rel="noopener noreferrer">View &amp; Apply</a>' +
+              '<button class="btn" data-action="mark-applied" data-saved-id="' + row.id + '" data-job-id="' + job.id + '" data-title="' + escapeHtml(job.title) + '" data-company="' + escapeHtml(job.company_name) + '" data-url="' + escapeHtml(job.apply_url) + '">Mark as Applied</button>' +
+              '<button class="btn danger" data-action="unsave" data-saved-id="' + row.id + '">Remove</button>' +
+            '</div>' +
+          '</div>'
+        );
+      }).join('');
+    } catch (e) {
+      console.error('Load saved jobs failed:', e);
+      savedListEl.innerHTML = '<div class="empty">Could not load your saved jobs. Please try refreshing.</div>';
+    }
+  }
+
+  savedListEl.addEventListener('click', async function (e) {
+    const btn = e.target.closest('button[data-action]');
+    if (!btn) return;
+    const sb = getSupabase();
+
+    if (btn.dataset.action === 'unsave') {
+      btn.disabled = true;
+      try {
+        const { error } = await sb.from('saved_jobs').delete().eq('id', btn.dataset.savedId).eq('user_id', currentUser.id);
+        if (error) throw error;
+        loadSavedJobs();
+      } catch (err) {
+        alert('Could not remove this saved job. Please try again.');
+        btn.disabled = false;
+      }
+    }
+
+    if (btn.dataset.action === 'mark-applied') {
+      btn.disabled = true;
+      btn.textContent = 'Saving…';
+      try {
+        const { error } = await sb.from('applications').insert({
+          user_id: currentUser.id,
+          job_id: btn.dataset.jobId,
+          job_title: btn.dataset.title,
+          company_name: btn.dataset.company,
+          apply_url: btn.dataset.url,
+          status: 'applied',
+          application_date: new Date().toISOString(),
+        });
+        if (error) throw error;
+        btn.textContent = '✅ Added to tracker';
+        loadApplications();
+      } catch (err) {
+        console.error('Mark as applied failed:', err);
+        alert('Could not add this to your application tracker. Please try again.');
+        btn.disabled = false;
+        btn.textContent = 'Mark as Applied';
+      }
+    }
+  });
+
+  /* ── Application tracker ── */
+  async function loadApplications() {
+    const sb = getSupabase();
+    appListEl.innerHTML = '<div class="loading">Loading…</div>';
+    try {
+      const { data, error } = await sb
+        .from('applications')
+        .select('*')
+        .eq('user_id', currentUser.id)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      if (!data || data.length === 0) {
+        appListEl.innerHTML = '<div class="empty">No applications tracked yet. Save a job above, then use "Mark as Applied" once you\'ve applied.</div>';
+        return;
+      }
+
+      appListEl.innerHTML = data.map(function (app) {
+        const statusOptions = STATUSES.map(function (s) {
+          return '<option value="' + s + '"' + (s === app.status ? ' selected' : '') + '>' + STATUS_LABELS[s] + '</option>';
+        }).join('');
+
+        return (
+          '<div class="card" data-app-id="' + app.id + '">' +
+            '<div class="card-top">' +
+              '<div>' +
+                '<p class="job-title">' + escapeHtml(app.job_title) + '</p>' +
+                '<p class="job-company">' + escapeHtml(app.company_name || '') + '</p>' +
+              '</div>' +
+              '<span class="status-badge ' + app.status + '">' + STATUS_LABELS[app.status] + '</span>' +
+            '</div>' +
+            '<div class="app-fields">' +
+              '<div class="field">' +
+                '<label>Status</label>' +
+                '<select data-field="status">' + statusOptions + '</select>' +
+              '</div>' +
+              '<div class="field">' +
+                '<label>Follow-up date</label>' +
+                '<input type="date" data-field="follow_up_date" value="' + (app.follow_up_date || '') + '">' +
+              '</div>' +
+            '</div>' +
+            '<div class="app-fields full">' +
+              '<div class="field">' +
+                '<label>Notes</label>' +
+                '<textarea data-field="notes" placeholder="Contact person, reference number, interview notes…">' + escapeHtml(app.notes || '') + '</textarea>' +
+              '</div>' +
+            '</div>' +
+            '<div class="card-actions">' +
+              (app.apply_url ? '<a class="btn" href="' + escapeHtml(app.apply_url) + '" target="_blank" rel="noopener noreferrer">View job posting</a>' : '') +
+              '<button class="btn primary" data-action="save-app">Save changes</button>' +
+              '<button class="btn danger" data-action="delete-app">Remove</button>' +
+            '</div>' +
+          '</div>'
+        );
+      }).join('');
+    } catch (e) {
+      console.error('Load applications failed:', e);
+      appListEl.innerHTML = '<div class="empty">Could not load your applications. Please try refreshing.</div>';
+    }
+  }
+
+  appListEl.addEventListener('click', async function (e) {
+    const btn = e.target.closest('button[data-action]');
+    if (!btn) return;
+    const card = btn.closest('.card');
+    const appId = card.dataset.appId;
+    const sb = getSupabase();
+
+    if (btn.dataset.action === 'delete-app') {
+      if (!confirm('Remove this application from your tracker?')) return;
+      btn.disabled = true;
+      try {
+        const { error } = await sb.from('applications').delete().eq('id', appId).eq('user_id', currentUser.id);
+        if (error) throw error;
+        loadApplications();
+      } catch (err) {
+        alert('Could not remove this application. Please try again.');
+        btn.disabled = false;
+      }
+    }
+
+    if (btn.dataset.action === 'save-app') {
+      const status = card.querySelector('[data-field="status"]').value;
+      const followUpDate = card.querySelector('[data-field="follow_up_date"]').value || null;
+      const notes = card.querySelector('[data-field="notes"]').value;
+
+      btn.disabled = true;
+      btn.textContent = 'Saving…';
+      try {
+        const { error } = await sb.from('applications')
+          .update({ status: status, follow_up_date: followUpDate, notes: notes })
+          .eq('id', appId)
+          .eq('user_id', currentUser.id);
+        if (error) throw error;
+        btn.textContent = '✅ Saved';
+        setTimeout(function () { loadApplications(); }, 600);
+      } catch (err) {
+        console.error('Save application failed:', err);
+        alert('Could not save your changes. Please try again.');
+        btn.disabled = false;
+        btn.textContent = 'Save changes';
+      }
+    }
+  });
+
+  /* ── Init ── */
+  (async function init() {
+    const sb = getSupabase();
+    if (!sb) {
+      signedOutEl.classList.add('show');
+      return;
+    }
+    try {
+      const { data } = await sb.auth.getSession();
+      currentUser = data?.session?.user || null;
+    } catch (e) {
+      currentUser = null;
+    }
+
+    if (!currentUser) {
+      signedOutEl.classList.add('show');
+      return;
+    }
+
+    contentEl.classList.add('show');
+    loadSavedJobs();
+    loadApplications();
+  })();
+</script>
+
+</body>
+</html>
