@@ -146,6 +146,7 @@ tr:hover td{background:#fafbfc;}
       <div class="tab" onclick="switchTab('users')">Users</div>
       <div class="tab" onclick="switchTab('payments')">Payments</div>
       <div class="tab" onclick="switchTab('extras')">Cover Letters & Bios</div>
+      <div class="tab" onclick="switchTab('government')">Government Jobs</div>
     </div>
 
     <!-- CVs TAB -->
@@ -204,6 +205,24 @@ tr:hover td{background:#fafbfc;}
           <h3>LinkedIn Bios</h3>
         </div>
         <div id="bios-table-body"><div class="loading">Loading…</div></div>
+      </div>
+    </div>
+
+    <!-- GOVERNMENT JOBS TAB -->
+    <div class="tab-content" id="tab-government">
+      <div class="table-wrap" style="margin-bottom:20px;">
+        <div class="table-header">
+          <h3>🏛 DPSA Sync Status</h3>
+          <button class="refresh-btn" onclick="loadGovernmentReview()">↺ Refresh</button>
+        </div>
+        <div id="dpsa-sync-status" style="padding:16px 20px;"><div class="loading">Loading…</div></div>
+      </div>
+      <div class="table-wrap">
+        <div class="table-header">
+          <h3>Pending Review</h3>
+          <span class="count" id="gov-review-count"></span>
+        </div>
+        <div id="gov-review-table-body"><div class="loading">Loading…</div></div>
       </div>
     </div>
 
@@ -272,7 +291,7 @@ async function adminLogout() {
 
 function switchTab(name) {
   document.querySelectorAll('.tab').forEach((t,i) => {
-    const names = ['cvs','users','payments','extras'];
+    const names = ['cvs','users','payments','extras','government'];
     t.classList.toggle('active', names[i] === name);
   });
   document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
@@ -296,6 +315,7 @@ async function loadAll() {
   loadUsers();
   loadPayments();
   loadExtras();
+  loadGovernmentReview();
 }
 
 async function loadCVs() {
@@ -434,8 +454,109 @@ async function adminResetPassword() {
   }
 }
 
-// Auto-check session on load
-checkExistingSession();
-</script>
-</body>
-</html>
+/* ── GOVERNMENT JOBS (DPSA) ── */
+async function loadGovernmentReview() {
+  // Sync status, from dpsa_sync_log (most recent circulars first).
+  const statusEl = document.getElementById('dpsa-sync-status');
+  statusEl.innerHTML = '<div class="loading">Loading…</div>';
+  const { data: syncRows, error: syncErr } = await sb
+    .from('dpsa_sync_log')
+    .select('*')
+    .order('synced_at', { ascending: false })
+    .limit(5);
+
+  if (syncErr || !syncRows) {
+    statusEl.innerHTML = '<div class="empty-state">Could not load sync status.<br><small>Make sure the dpsa_sync_log table exists in Supabase.</small></div>';
+  } else if (!syncRows.length) {
+    statusEl.innerHTML = '<div class="empty-state">No DPSA sync has run yet.</div>';
+  } else {
+    const latest = syncRows[0];
+    statusEl.innerHTML =
+      '<div class="stat-grid" style="margin-bottom:0;">' +
+        '<div class="stat-card"><div class="stat-num">' + latest.circular_number + ' of ' + latest.circular_year + '</div><div class="stat-label">Latest Circular</div></div>' +
+        '<div class="stat-card blue"><div class="stat-num" style="font-size:16px;">' + fmt(latest.synced_at) + '</div><div class="stat-label">Last Sync</div></div>' +
+        '<div class="stat-card"><div class="stat-num">' + latest.vacancies_detected + '</div><div class="stat-label">Detected</div></div>' +
+        '<div class="stat-card"><div class="stat-num">' + latest.vacancies_published + '</div><div class="stat-label">Published</div></div>' +
+        '<div class="stat-card gold"><div class="stat-num">' + latest.vacancies_review + '</div><div class="stat-label">Awaiting Review</div></div>' +
+        '<div class="stat-card' + (latest.status !== 'ok' ? ' red' : '') + '"><div class="stat-num" style="font-size:16px;">' + latest.status.toUpperCase() + '</div><div class="stat-label">Status</div></div>' +
+      '</div>' +
+      (latest.error_message ? '<p style="margin-top:12px;color:var(--red);font-size:13px;"><strong>Last error:</strong> ' + latest.error_message + '</p>' : '');
+  }
+
+  // Pending review queue.
+  const tableEl = document.getElementById('gov-review-table-body');
+  tableEl.innerHTML = '<div class="loading">Loading…</div>';
+  const { data, error } = await sb
+    .from('jobs')
+    .select('*')
+    .eq('government_job', true)
+    .eq('review_status', 'pending_review')
+    .order('circular_year', { ascending: false })
+    .order('circular_number', { ascending: false })
+    .limit(200);
+
+  if (error || !data) {
+    tableEl.innerHTML = '<div class="empty-state">Could not load Government Jobs review queue.</div>';
+    document.getElementById('gov-review-count').textContent = '';
+    return;
+  }
+
+  document.getElementById('gov-review-count').textContent = data.length + ' pending';
+
+  if (!data.length) {
+    tableEl.innerHTML = '<div class="empty-state">Nothing pending review right now.</div>';
+    return;
+  }
+
+  let html = '<table><thead><tr><th>Circular</th><th>Dept / Annexure</th><th>Post</th><th>Title</th><th>Ref</th><th>Location</th><th>Closing</th><th>Application destination</th><th>Confidence</th><th>Warnings</th><th>Actions</th></tr></thead><tbody>';
+  data.forEach((r) => {
+    const warnings = Array.isArray(r.tags) ? r.tags.join(', ') : '';
+    const appDest = r.official_application_url
+      ? '<a href="' + r.official_application_url + '" target="_blank" rel="noopener noreferrer">' + truncate(r.official_application_url, 30) + '</a>'
+      : (r.application_method === 'email' ? '✉ ' + escapeHtmlAdmin(truncate(r.application_instructions, 40))
+        : r.application_method === 'postal' ? '📮 ' + escapeHtmlAdmin(truncate(r.application_instructions, 40))
+        : r.application_method || '—');
+    html += '<tr' + (r.confidence_level === 'low' ? ' class="flag-row"' : '') + ' data-job-id="' + r.id + '">' +
+      '<td>' + (r.circular_number ?? '—') + ' of ' + (r.circular_year ?? '—') + '</td>' +
+      '<td>' + truncate(r.department, 30) + '<br><small>' + (r.annexure || '') + '</small></td>' +
+      '<td>' + (r.post_number || '—') + '</td>' +
+      '<td>' + truncate(r.title, 50) + '</td>' +
+      '<td>' + (r.reference_number || '—') + '</td>' +
+      '<td>' + truncate(r.location, 25) + '</td>' +
+      '<td>' + (r.closing_date ? fmt(r.closing_date) : '—') + '</td>' +
+      '<td style="max-width:180px;">' + appDest + '</td>' +
+      '<td><span class="badge ' + (r.confidence_level === 'medium' ? 'starter' : 'free') + '">' + (r.confidence_level || '—').toUpperCase() + '</span></td>' +
+      '<td><small class="flag">' + escapeHtmlAdmin(warnings) + '</small></td>' +
+      '<td style="white-space:nowrap;">' +
+        '<button class="refresh-btn" onclick="approveGovJob(\'' + r.id + '\')">✅ Approve</button> ' +
+        '<button class="refresh-btn" onclick="rejectGovJob(\'' + r.id + '\')">✕ Reject</button> ' +
+        '<button class="refresh-btn" onclick="editGovJob(\'' + r.id + '\')">✎ Edit</button> ' +
+        (r.official_pdf_url ? '<a href="' + r.official_pdf_url + '" target="_blank" rel="noopener noreferrer" style="font-size:12px;">View PDF</a>' : '') +
+      '</td>' +
+    '</tr>';
+  });
+  html += '</tbody></table>';
+  tableEl.innerHTML = html;
+  window._govReviewRows = data; // for editGovJob to read current values from
+}
+
+function escapeHtmlAdmin(str) {
+  const div = document.createElement('div');
+  div.textContent = str || '';
+  return div.innerHTML;
+}
+
+async function approveGovJob(id) {
+  const { error } = await sb.from('jobs').update({ review_status: 'published', is_active: true }).eq('id', id);
+  if (error) { alert('Could not approve: ' + error.message); return; }
+  loadGovernmentReview();
+}
+
+async function rejectGovJob(id) {
+  const { error } = await sb.from('jobs').update({ review_status: 'rejected', is_active: false }).eq('id', id);
+  if (error) { alert('Could not reject: ' + error.message); return; }
+  loadGovernmentReview();
+}
+
+// Minimal, real (not decorative) edit flow: lets the admin correct the
+// handful of fields a parsing gap is most
