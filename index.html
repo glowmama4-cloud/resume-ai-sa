@@ -2040,6 +2040,13 @@ function checkPaymentReturn() {
     updateCreditsDisplay();
     updateGuestNotice();
     checkPaymentReturn();
+    // Careers and My Job Search link here with ?openAuth=1 when a signed-out
+    // visitor tries to save a job or view their tracker — open the sign-in
+    // modal automatically so they land straight on it, only if not already
+    // signed in.
+    if (new URLSearchParams(window.location.search).get('openAuth') === '1' && !currentUser) {
+      openAuth();
+    }
   } catch (e) {
     console.error('Init error:', e);
     updateCreditsDisplay();
