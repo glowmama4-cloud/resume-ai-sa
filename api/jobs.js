@@ -26,6 +26,7 @@ export default async function handler(req, res) {
   const excludeCountry = (req.query.exclude_country || '').trim(); // e.g. 'ZA' -> everything NOT South Africa
   const jobCategory = (req.query.job_category || '').trim();    // e.g. 'internship'
   const isRemoteParam = req.query.is_remote; // 'true' | 'false' | undefined
+  const governmentJob = req.query.government_job; // 'true' | undefined
 
   const page = parseInt(req.query.page || '1', 10);
   const pageSize = 20;
@@ -35,6 +36,13 @@ export default async function handler(req, res) {
   const params = new URLSearchParams();
   params.set('select', '*');
   params.set('is_active', 'eq.true');
+  // Every row in `jobs` gets review_status set (private-sector rows default
+  // to 'published', Government rows are explicitly set by dpsa-sync.js based
+  // on confidence — see the migration's comment on this column). Filtering
+  // on it here is a second, independent layer of protection: even if a
+  // pending/rejected Government record were ever mistakenly left
+  // is_active=true, it still could not reach a normal jobseeker's search.
+  params.set('review_status', 'eq.published');
   params.set('order', 'posted_at.desc');
 
   if (employmentType && employmentType !== 'all') {
@@ -51,6 +59,9 @@ export default async function handler(req, res) {
   }
   if (isRemoteParam === 'true' || isRemoteParam === 'false') {
     params.set('is_remote', `eq.${isRemoteParam}`);
+  }
+  if (governmentJob === 'true') {
+    params.set('government_job', 'eq.true');
   }
   if (jobCategory) {
     params.set('job_category', `eq.${jobCategory}`);
