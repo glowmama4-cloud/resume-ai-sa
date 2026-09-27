@@ -1,7 +1,7 @@
 {
   "crons": [
     {
-      "path": "/api/jobs-sync?secret=glow2026sync",
+      "path": "/api/jobs-sync",
       "schedule": "0 6 * * *"
     }
   ]
