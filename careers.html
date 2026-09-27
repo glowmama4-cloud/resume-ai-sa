@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js" crossorigin="anonymous"></script>
 <style>
   :root {
     --sa-green:   #007A4D;
@@ -26,6 +27,8 @@
     --green-txt:  #005C39;
     --blue-bg:    #eff6ff;
     --blue-txt:   #1e40af;
+    --gold-bg:    #fffbeb;
+    --gold-txt:   #92400e;
   }
   * { box-sizing: border-box; }
   body {
@@ -39,6 +42,14 @@
     margin: 0 auto;
     padding: 32px 20px 80px;
   }
+  .top-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+  }
   .eyebrow {
     display: inline-block;
     font-size: 12px;
@@ -49,18 +60,41 @@
     background: var(--green-bg);
     padding: 4px 10px;
     border-radius: 999px;
-    margin-bottom: 12px;
   }
+  .my-jobs-link {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--sa-green-d);
+    text-decoration: none;
+    background: var(--green-bg);
+    padding: 6px 12px;
+    border-radius: 999px;
+  }
+  .my-jobs-link:hover { background: #d9f0e3; }
   h1 {
     font-size: 26px;
     font-weight: 700;
-    margin: 0 0 6px;
+    margin: 10px 0 6px;
   }
   .sub {
     color: var(--ink2);
     margin: 0 0 20px;
     font-size: 15px;
   }
+  .signin-banner {
+    display: none;
+    align-items: center;
+    gap: 8px;
+    background: var(--gold-bg);
+    border: 1px solid #f5d88a;
+    color: var(--gold-txt);
+    font-size: 13px;
+    padding: 11px 16px;
+    border-radius: 10px;
+    margin-bottom: 16px;
+  }
+  .signin-banner.show { display: flex; }
+  .signin-banner a { color: var(--sa-green-d); font-weight: 600; }
   .search {
     width: 100%;
     padding: 12px 16px;
@@ -180,8 +214,14 @@
     background: var(--blue-bg);
     color: var(--blue-txt);
   }
-  .apply {
+  .actions {
     flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    align-items: stretch;
+  }
+  .apply {
     background: var(--sa-green);
     color: #fff;
     text-decoration: none;
@@ -190,10 +230,32 @@
     padding: 9px 16px;
     border-radius: 10px;
     white-space: nowrap;
+    text-align: center;
     transition: background 0.15s ease;
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
   }
   .apply:hover {
     background: var(--sa-green-d);
+  }
+  .save-btn {
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 7px 14px;
+    border-radius: 10px;
+    border: 1.5px solid var(--border2);
+    background: var(--surf);
+    color: var(--ink2);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .save-btn:hover { border-color: var(--sa-green); color: var(--ink); }
+  .save-btn.saved {
+    background: var(--green-bg);
+    border-color: var(--sa-green);
+    color: var(--green-txt);
   }
   .empty, .loading {
     color: var(--ink3);
@@ -228,9 +290,16 @@
 <body>
 
 <div class="wrap">
-  <span class="eyebrow">Careers</span>
+  <div class="top-row">
+    <span class="eyebrow">Careers</span>
+    <a href="/my-jobs.html" class="my-jobs-link">📁 My Job Search</a>
+  </div>
   <h1>Find your next role</h1>
   <p class="sub">Jobs from around the world — remote and in-office — apply straight to the employer.</p>
+
+  <div class="signin-banner" id="signinBanner">
+    💡 <a href="/?openAuth=1">Sign in or register free</a> to save jobs and track your applications.
+  </div>
 
   <input type="text" id="search" class="search" placeholder="Search job title or company">
 
@@ -268,6 +337,28 @@
 </div>
 
 <script>
+  /* ── Supabase (shared session with the main site — same project, same
+     default localStorage key, so a user already signed in on index.html
+     is automatically recognised here too) ── */
+  const SUPABASE_URL = 'https://jrkesmwqpwrjqxufazvs.supabase.co';
+  const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_JljqsXyZ1W1JYNlWDmBNog_TZcW9hcN';
+  let supabaseClient = null;
+  function getSupabase() {
+    if (supabaseClient) return supabaseClient;
+    try {
+      if (!window.supabase) return null;
+      supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+        auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
+      });
+    } catch (e) {
+      supabaseClient = null;
+    }
+    return supabaseClient;
+  }
+
+  let currentUser = null;
+  let savedJobIds = new Set(); // job ids the signed-in user has already saved
+
   const jobListEl      = document.getElementById('jobList');
   const searchEl       = document.getElementById('search');
   const tabsEl         = document.getElementById('tabs');
@@ -276,10 +367,10 @@
   const resultCountEl  = document.getElementById('resultCount');
   const loadMoreRow    = document.getElementById('loadMoreRow');
   const loadMoreBtn    = document.getElementById('loadMoreBtn');
+  const signinBanner   = document.getElementById('signinBanner');
 
   let activeTab   = 'all';
   let currentPage = 1;
-  let allJobs     = [];
   let totalCount  = 0;
   let debounceTimer;
 
@@ -314,6 +405,67 @@
     return div.innerHTML;
   }
 
+  /* ── Auth / saved jobs ── */
+  async function checkSession() {
+    const sb = getSupabase();
+    if (!sb) return;
+    try {
+      const { data } = await sb.auth.getSession();
+      currentUser = data?.session?.user || null;
+    } catch (e) {
+      currentUser = null;
+    }
+    signinBanner.classList.toggle('show', !currentUser);
+    if (currentUser) await loadSavedJobIds();
+  }
+
+  async function loadSavedJobIds() {
+    const sb = getSupabase();
+    if (!sb || !currentUser) return;
+    try {
+      const { data, error } = await sb.from('saved_jobs').select('job_id').eq('user_id', currentUser.id);
+      if (!error && data) {
+        savedJobIds = new Set(data.map((r) => r.job_id));
+      }
+    } catch (e) {
+      console.warn('Could not load saved jobs:', e);
+    }
+  }
+
+  async function toggleSave(jobId, btnEl) {
+    if (!currentUser) {
+      window.location.href = '/?openAuth=1';
+      return;
+    }
+    const sb = getSupabase();
+    if (!sb) return;
+
+    const isSaved = savedJobIds.has(jobId);
+    btnEl.disabled = true;
+
+    try {
+      if (isSaved) {
+        const { error } = await sb.from('saved_jobs').delete().eq('user_id', currentUser.id).eq('job_id', jobId);
+        if (error) throw error;
+        savedJobIds.delete(jobId);
+        btnEl.textContent = '☆ Save';
+        btnEl.classList.remove('saved');
+      } else {
+        const { error } = await sb.from('saved_jobs').insert({ user_id: currentUser.id, job_id: jobId });
+        if (error) throw error;
+        savedJobIds.add(jobId);
+        btnEl.textContent = '★ Saved';
+        btnEl.classList.add('saved');
+      }
+    } catch (e) {
+      console.error('Save/unsave failed:', e);
+      alert('Could not update saved jobs. Please try again.');
+    } finally {
+      btnEl.disabled = false;
+    }
+  }
+
+  /* ── Job list rendering ── */
   function renderJobs(jobs, append) {
     if (!jobs || jobs.length === 0) {
       if (!append) {
@@ -337,6 +489,7 @@
       const categoryTag = categoryLabel
         ? '<span class="tag category">' + escapeHtml(categoryLabel) + '</span>'
         : '';
+      const isSaved = savedJobIds.has(job.id);
       return (
         '<div class="card">' +
           '<div class="logo">' + logo + '</div>' +
@@ -351,7 +504,12 @@
               '<span class="tag">' + timeAgo(job.posted_at) + '</span>' +
             '</div>' +
           '</div>' +
-          '<a class="apply" href="' + escapeHtml(job.apply_url) + '" target="_blank" rel="noopener noreferrer">Apply</a>' +
+          '<div class="actions">' +
+            '<a class="apply" href="' + escapeHtml(job.apply_url) + '" target="_blank" rel="noopener noreferrer">Apply</a>' +
+            '<button class="save-btn' + (isSaved ? ' saved' : '') + '" data-job-id="' + escapeHtml(job.id) + '">' +
+              (isSaved ? '★ Saved' : '☆ Save') +
+            '</button>' +
+          '</div>' +
         '</div>'
       );
     }).join('');
@@ -363,6 +521,12 @@
     }
   }
 
+  jobListEl.addEventListener('click', function (e) {
+    const btn = e.target.closest('.save-btn');
+    if (!btn) return;
+    toggleSave(btn.dataset.jobId, btn);
+  });
+
   function buildParams(page) {
     const params = new URLSearchParams();
     const search = searchEl.value.trim();
@@ -373,8 +537,6 @@
     const jobCategory = jobCategoryEl.value;
     if (jobCategory) params.set('job_category', jobCategory);
 
-    // Tabs map to real, existing columns populated by jobs-sync.js — never
-    // a category with no matching data.
     if (activeTab === 'remote') {
       params.set('is_remote', 'true');
     } else if (activeTab === 'south_africa') {
@@ -452,7 +614,10 @@
     loadJobs(currentPage + 1, true);
   });
 
-  refresh();
+  (async function init() {
+    await checkSession();
+    refresh();
+  })();
 </script>
 
 </body>
