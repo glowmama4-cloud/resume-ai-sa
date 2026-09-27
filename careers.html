@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Careers — Full-Time Jobs | ResumeAI SA</title>
-<meta name="description" content="Full-time jobs from around the world, remote and in-office. Apply directly with the CV you built on ResumeAI SA.">
+<title>Careers — Jobs | ResumeAI SA</title>
+<meta name="description" content="Jobs from around the world, remote and in-office. Apply directly with the CV you built on ResumeAI SA.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -24,6 +24,8 @@
     --border2:    #ccc9c0;
     --green-bg:   #e8f5ee;
     --green-txt:  #005C39;
+    --blue-bg:    #eff6ff;
+    --blue-txt:   #1e40af;
   }
   * { box-sizing: border-box; }
   body {
@@ -33,7 +35,7 @@
     color: var(--ink);
   }
   .wrap {
-    max-width: 720px;
+    max-width: 760px;
     margin: 0 auto;
     padding: 32px 20px 80px;
   }
@@ -50,13 +52,13 @@
     margin-bottom: 12px;
   }
   h1 {
-    font-size: 28px;
+    font-size: 26px;
     font-weight: 700;
     margin: 0 0 6px;
   }
   .sub {
     color: var(--ink2);
-    margin: 0 0 24px;
+    margin: 0 0 20px;
     font-size: 15px;
   }
   .search {
@@ -68,12 +70,51 @@
     font-family: inherit;
     font-size: 15px;
     outline: none;
+    margin-bottom: 14px;
   }
   .search:focus {
     border-color: var(--sa-green);
   }
+  .tabs {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+  }
+  .tab {
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 7px 14px;
+    border-radius: 999px;
+    border: 1.5px solid var(--border2);
+    background: var(--surf);
+    color: var(--ink2);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .tab:hover { border-color: var(--sa-green); color: var(--ink); }
+  .tab.active {
+    background: var(--sa-green);
+    border-color: var(--sa-green);
+    color: #fff;
+  }
+  .filter-row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 18px;
+  }
+  .filter-row select {
+    font-family: inherit;
+    font-size: 13px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--border2);
+    background: var(--surf);
+    color: var(--ink2);
+  }
   .list {
-    margin-top: 20px;
     display: flex;
     flex-direction: column;
     gap: 10px;
@@ -135,6 +176,10 @@
     background: var(--green-bg);
     color: var(--green-txt);
   }
+  .tag.category {
+    background: var(--blue-bg);
+    color: var(--blue-txt);
+  }
   .apply {
     flex-shrink: 0;
     background: var(--sa-green);
@@ -156,26 +201,103 @@
     padding: 24px 4px;
     text-align: center;
   }
+  .load-more-row {
+    text-align: center;
+    margin-top: 18px;
+  }
+  .load-more {
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 10px 22px;
+    border-radius: 10px;
+    border: 1.5px solid var(--border2);
+    background: var(--surf);
+    color: var(--ink);
+    cursor: pointer;
+  }
+  .load-more:hover { border-color: var(--sa-green); }
+  .load-more:disabled { opacity: 0.5; cursor: default; }
+  .result-count {
+    font-size: 12px;
+    color: var(--ink3);
+    margin-bottom: 10px;
+  }
 </style>
 </head>
 <body>
 
 <div class="wrap">
   <span class="eyebrow">Careers</span>
-  <h1>Find your next full-time role</h1>
-  <p class="sub">Full-time jobs from around the world — remote and in-office — apply straight to the employer.</p>
+  <h1>Find your next role</h1>
+  <p class="sub">Jobs from around the world — remote and in-office — apply straight to the employer.</p>
 
   <input type="text" id="search" class="search" placeholder="Search job title or company">
+
+  <div class="tabs" id="tabs">
+    <button class="tab active" data-tab="all">All Jobs</button>
+    <button class="tab" data-tab="remote">Remote</button>
+    <button class="tab" data-tab="south_africa">South Africa</button>
+    <button class="tab" data-tab="international">International</button>
+  </div>
+
+  <div class="filter-row">
+    <select id="jobCategory">
+      <option value="">Any job type</option>
+      <option value="internship">Internships</option>
+      <option value="learnership">Learnerships</option>
+      <option value="graduate_programme">Graduate Programmes</option>
+    </select>
+    <select id="employmentType">
+      <option value="all">Any employment type</option>
+      <option value="full_time" selected>Full-time</option>
+      <option value="part_time">Part-time</option>
+      <option value="contract">Contract</option>
+    </select>
+  </div>
+
+  <div class="result-count" id="resultCount"></div>
 
   <div class="list" id="jobList">
     <div class="loading">Loading jobs…</div>
   </div>
+
+  <div class="load-more-row" id="loadMoreRow" style="display:none;">
+    <button class="load-more" id="loadMoreBtn">Load more jobs</button>
+  </div>
 </div>
 
 <script>
-  const jobListEl = document.getElementById('jobList');
-  const searchEl = document.getElementById('search');
+  const jobListEl      = document.getElementById('jobList');
+  const searchEl       = document.getElementById('search');
+  const tabsEl         = document.getElementById('tabs');
+  const jobCategoryEl  = document.getElementById('jobCategory');
+  const employmentEl   = document.getElementById('employmentType');
+  const resultCountEl  = document.getElementById('resultCount');
+  const loadMoreRow    = document.getElementById('loadMoreRow');
+  const loadMoreBtn    = document.getElementById('loadMoreBtn');
+
+  let activeTab   = 'all';
+  let currentPage = 1;
+  let allJobs     = [];
+  let totalCount  = 0;
   let debounceTimer;
+
+  const REMOTE_SCOPE_LABELS = {
+    worldwide: 'Remote · Worldwide',
+    south_africa: 'Remote · South Africa',
+    country_restricted: 'Remote · Country-restricted',
+    region_restricted: 'Remote · Region-restricted',
+    hybrid: 'Hybrid',
+    onsite: 'On-site',
+    unknown: '',
+  };
+
+  const CATEGORY_LABELS = {
+    internship: 'Internship',
+    learnership: 'Learnership',
+    graduate_programme: 'Graduate Programme',
+  };
 
   function timeAgo(dateStr) {
     if (!dateStr) return '';
@@ -192,18 +314,28 @@
     return div.innerHTML;
   }
 
-  function renderJobs(jobs) {
+  function renderJobs(jobs, append) {
     if (!jobs || jobs.length === 0) {
-      jobListEl.innerHTML = '<div class="empty">No jobs match right now — check back soon.</div>';
+      if (!append) {
+        jobListEl.innerHTML = '<div class="empty">No jobs match right now — try a different filter or check back soon.</div>';
+      }
       return;
     }
-    jobListEl.innerHTML = jobs.map(function (job) {
+    const html = jobs.map(function (job) {
       const initial = (job.company_name || '?').charAt(0).toUpperCase();
       const logo = job.company_logo_url
         ? '<img src="' + escapeHtml(job.company_logo_url) + '" alt="">'
         : initial;
       const salaryTag = job.salary_text
         ? '<span class="tag salary">' + escapeHtml(job.salary_text) + '</span>'
+        : '';
+      const remoteLabel = REMOTE_SCOPE_LABELS[job.remote_scope] || '';
+      const remoteTag = remoteLabel
+        ? '<span class="tag">' + escapeHtml(remoteLabel) + '</span>'
+        : '';
+      const categoryLabel = CATEGORY_LABELS[job.job_category];
+      const categoryTag = categoryLabel
+        ? '<span class="tag category">' + escapeHtml(categoryLabel) + '</span>'
         : '';
       return (
         '<div class="card">' +
@@ -213,6 +345,8 @@
             '<p class="company">' + escapeHtml(job.company_name) + '</p>' +
             '<div class="tags">' +
               '<span class="tag">' + escapeHtml(job.location || 'Worldwide') + '</span>' +
+              remoteTag +
+              categoryTag +
               salaryTag +
               '<span class="tag">' + timeAgo(job.posted_at) + '</span>' +
             '</div>' +
@@ -221,28 +355,104 @@
         '</div>'
       );
     }).join('');
+
+    if (append) {
+      jobListEl.insertAdjacentHTML('beforeend', html);
+    } else {
+      jobListEl.innerHTML = html;
+    }
   }
 
-  function loadJobs() {
-    jobListEl.innerHTML = '<div class="loading">Loading jobs…</div>';
+  function buildParams(page) {
     const params = new URLSearchParams();
     const search = searchEl.value.trim();
     if (search) params.set('search', search);
+    params.set('page', String(page));
+    params.set('employment_type', employmentEl.value);
+
+    const jobCategory = jobCategoryEl.value;
+    if (jobCategory) params.set('job_category', jobCategory);
+
+    // Tabs map to real, existing columns populated by jobs-sync.js — never
+    // a category with no matching data.
+    if (activeTab === 'remote') {
+      params.set('is_remote', 'true');
+    } else if (activeTab === 'south_africa') {
+      params.set('country', 'ZA');
+    } else if (activeTab === 'international') {
+      params.set('exclude_country', 'ZA');
+    }
+
+    return params;
+  }
+
+  function loadJobs(page, append) {
+    if (!append) {
+      jobListEl.innerHTML = '<div class="loading">Loading jobs…</div>';
+      resultCountEl.textContent = '';
+      loadMoreRow.style.display = 'none';
+    } else {
+      loadMoreBtn.disabled = true;
+      loadMoreBtn.textContent = 'Loading…';
+    }
+
+    const params = buildParams(page);
 
     fetch('/api/jobs?' + params.toString())
       .then(function (res) { return res.json(); })
-      .then(function (data) { renderJobs(data.jobs); })
+      .then(function (data) {
+        currentPage = page;
+        totalCount = data.total || 0;
+        renderJobs(data.jobs, append);
+
+        const shown = Math.min(page * 20, totalCount);
+        resultCountEl.textContent = totalCount > 0
+          ? shown + ' of ' + totalCount + ' jobs'
+          : '';
+
+        if (totalCount > page * 20) {
+          loadMoreRow.style.display = 'block';
+          loadMoreBtn.disabled = false;
+          loadMoreBtn.textContent = 'Load more jobs';
+        } else {
+          loadMoreRow.style.display = 'none';
+        }
+      })
       .catch(function () {
-        jobListEl.innerHTML = '<div class="empty">Couldn\'t load jobs right now — try refreshing.</div>';
+        if (!append) {
+          jobListEl.innerHTML = '<div class="empty">Couldn\'t load jobs right now — try refreshing.</div>';
+        }
+        loadMoreBtn.disabled = false;
+        loadMoreBtn.textContent = 'Load more jobs';
       });
+  }
+
+  function refresh() {
+    loadJobs(1, false);
   }
 
   searchEl.addEventListener('input', function () {
     clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(loadJobs, 300);
+    debounceTimer = setTimeout(refresh, 300);
   });
 
-  loadJobs();
+  jobCategoryEl.addEventListener('change', refresh);
+  employmentEl.addEventListener('change', refresh);
+
+  tabsEl.addEventListener('click', function (e) {
+    const btn = e.target.closest('.tab');
+    if (!btn) return;
+    tabsEl.querySelectorAll('.tab').forEach(function (t) { t.classList.remove('active'); });
+    btn.classList.add('active');
+    activeTab = btn.dataset.tab;
+    refresh();
+  });
+
+  loadMoreBtn.addEventListener('click', function () {
+    loadJobs(currentPage + 1, true);
+  });
+
+  refresh();
 </script>
 
 </body>
