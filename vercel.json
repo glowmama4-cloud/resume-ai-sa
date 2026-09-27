@@ -3,6 +3,10 @@
     {
       "path": "/api/jobs-sync",
       "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/dpsa-sync",
+      "schedule": "0 7 * * *"
     }
   ]
 }
