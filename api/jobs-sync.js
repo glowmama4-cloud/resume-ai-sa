@@ -1,6 +1,19 @@
 // Pulls remote, full-time jobs from 5 free public job APIs, cleans them into
-// one consistent shape, and saves them into your Supabase `jobs` table.
-// Protected by CRON_SECRET so only you (or a scheduled job) can trigger it.
+// one consistent shape, enriches them with structured filter fields, and
+// saves them into your Supabase `jobs` table. Protected by CRON_SECRET so
+// only you (or a scheduled job) can trigger it.
+//
+// Phase 3 additions on top of the original sync:
+//   - country / remote_scope / job_category inferred per job
+//   - last_seen_at stamped on every job this run still finds
+//   - jobs a source stops returning for 3+ days get marked is_active=false
+//     (per source — a failing source never causes other sources' jobs to
+//     be wrongly deactivated)
+//   - jobs with a closing_date in the past get marked is_active=false too
+//     (currently no source reliably provides one, but this is here for
+//     when a source — e.g. a future government integration — does)
+
+const STALE_AFTER_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
 
 function guessEmploymentType(raw) {
   if (!raw) return 'unknown';
@@ -25,6 +38,81 @@ function titleCaseSlug(slug) {
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(' ');
 }
+
+// ── Phase 3: structured-field inference ──
+// These are best-effort text heuristics against whatever free-text location
+// string each source provides — none of the 5 sources give a clean
+// structured country/region field (Adzuna is the one exception; it's
+// request-scoped by country, so fetchAdzuna() sets `country` directly and
+// this function leaves it alone).
+
+const COUNTRY_HINTS = [
+  [/\bsouth africa\b|\bza\b/i, 'ZA'],
+  [/\bunited states\b|\busa\b|\bu\.s\.a?\.?\b/i, 'US'],
+  [/\bunited kingdom\b|\buk\b/i, 'GB'],
+  [/\bcanada\b/i, 'CA'],
+  [/\baustralia\b/i, 'AU'],
+  [/\bgermany\b/i, 'DE'],
+  [/\bireland\b/i, 'IE'],
+  [/\bnetherlands\b/i, 'NL'],
+  [/\bindia\b/i, 'IN'],
+  [/\bsingapore\b/i, 'SG'],
+];
+
+const REGION_HINTS = [
+  /\bemea\b/i,
+  /\bapac\b/i,
+  /\beurope\b/i,
+  /\bnorth america\b/i,
+  /\blatam\b|\blatin america\b/i,
+];
+
+function inferCountry(job) {
+  if (job.country) return job.country; // already set (e.g. by fetchAdzuna)
+  const loc = job.location || '';
+  for (const [pattern, code] of COUNTRY_HINTS) {
+    if (pattern.test(loc)) return code;
+  }
+  if (/\bworldwide\b|\banywhere\b/i.test(loc)) return 'Worldwide';
+  return null; // genuinely unknown — do not guess
+}
+
+function inferRemoteScope(job) {
+  const loc = (job.location || '').toLowerCase();
+
+  if (!job.is_remote) {
+    if (loc.includes('hybrid')) return 'hybrid';
+    if (loc.trim()) return 'onsite';
+    return 'unknown';
+  }
+
+  if (job.country === 'ZA' || /\bsouth africa\b/i.test(loc)) return 'south_africa';
+  if (/\bworldwide\b|\banywhere\b/i.test(loc) || !loc.trim()) return 'worldwide';
+  if (REGION_HINTS.some((r) => r.test(loc))) return 'region_restricted';
+  if (COUNTRY_HINTS.some(([pattern]) => pattern.test(loc))) return 'country_restricted';
+  return 'unknown';
+}
+
+function inferJobCategory(title) {
+  const t = title || '';
+  if (/\bintern(ship)?\b/i.test(t) && !/\binternational\b/i.test(t)) return 'internship';
+  if (/\blearnership\b/i.test(t)) return 'learnership';
+  if (/\bgraduate\b/i.test(t)) return 'graduate_programme';
+  return 'general';
+}
+
+function enrichJob(job) {
+  const country = inferCountry(job);
+  const withCountry = { ...job, country };
+  return {
+    ...withCountry,
+    remote_scope: inferRemoteScope(withCountry),
+    job_category: inferJobCategory(job.title),
+    last_seen_at: new Date().toISOString(),
+  };
+}
+
+// ── Sources ──
 
 async function fetchArbeitnow() {
   try {
@@ -151,6 +239,7 @@ async function fetchAdzuna() {
           company_name: j.company?.display_name || 'Unknown',
           company_logo_url: null,
           location: j.location?.display_name || country.toUpperCase(),
+          country: country.toUpperCase(), // Adzuna is queried per-country, so this is reliable
           is_remote: /remote/i.test(j.title) || /remote/i.test(j.description || ''),
           employment_type: guessEmploymentType(j.contract_time),
           salary_text: j.salary_min && j.salary_max ? `${j.salary_min}-${j.salary_max}` : null,
@@ -166,6 +255,14 @@ async function fetchAdzuna() {
   }
   return results;
 }
+
+const SOURCES = [
+  { name: 'arbeitnow', fetch: fetchArbeitnow },
+  { name: 'remotive', fetch: fetchRemotive },
+  { name: 'himalayas', fetch: fetchHimalayas },
+  { name: 'remoteok', fetch: fetchRemoteOK },
+  { name: 'adzuna', fetch: fetchAdzuna },
+];
 
 export default async function handler(req, res) {
   // Header-only auth. Vercel's native Cron adds
@@ -187,20 +284,25 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Supabase not configured on server.' });
   }
 
-  const results = await Promise.allSettled([
-    fetchArbeitnow(),
-    fetchRemotive(),
-    fetchHimalayas(),
-    fetchRemoteOK(),
-    fetchAdzuna(),
-  ]);
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
 
+  // Run each source independently so one failing source can't take the
+  // others down, and so we know exactly which sources actually returned
+  // data this run (needed for the per-source expiry step below).
+  const results = await Promise.allSettled(SOURCES.map((s) => s.fetch()));
+
+  const perSourceCounts = {};
   let jobs = [];
-  for (const r of results) {
-    if (r.status === 'fulfilled') jobs.push(...r.value);
-  }
+  results.forEach((r, i) => {
+    const name = SOURCES[i].name;
+    const value = r.status === 'fulfilled' ? r.value : [];
+    perSourceCounts[name] = value.length;
+    jobs.push(...value);
+  });
+
   jobs = jobs.filter((j) => j.title && j.company_name && j.apply_url);
-  jobs = jobs.map((j) => ({ ...j, tags: toTagArray(j.tags) }));
+  jobs = jobs.map((j) => enrichJob({ ...j, tags: toTagArray(j.tags) }));
 
   if (jobs.length === 0) {
     return res.status(502).json({ ok: false, message: 'No jobs fetched from any source' });
@@ -208,12 +310,12 @@ export default async function handler(req, res) {
 
   try {
     const response = await fetch(
-      `${process.env.SUPABASE_URL}/rest/v1/jobs?on_conflict=source,source_job_id`,
+      `${supabaseUrl}/rest/v1/jobs?on_conflict=source,source_job_id`,
       {
         method: 'POST',
         headers: {
-          apikey: process.env.SUPABASE_SERVICE_KEY,
-          Authorization: `Bearer ${process.env.SUPABASE_SERVICE_KEY}`,
+          apikey: supabaseKey,
+          Authorization: `Bearer ${supabaseKey}`,
           'Content-Type': 'application/json',
           Prefer: 'resolution=merge-duplicates',
         },
@@ -225,9 +327,76 @@ export default async function handler(req, res) {
       const err = await response.text();
       return res.status(500).json({ ok: false, error: err });
     }
-
-    return res.status(200).json({ ok: true, synced: jobs.length });
   } catch (e) {
     return res.status(500).json({ ok: false, error: 'Server error while saving jobs.' });
   }
+
+  // ── Expiry ──
+  // 1. Per successful source: a job we haven't seen in 3+ days has
+  //    disappeared from that source's feed — mark it inactive. Sources
+  //    that returned 0 jobs this run (likely a transient failure) are
+  //    skipped entirely, so a source outage never wrongly deactivates
+  //    everything from that source.
+  const staleCutoff = new Date(Date.now() - STALE_AFTER_MS).toISOString();
+  const expiredBySource = {};
+  for (const source of Object.keys(perSourceCounts)) {
+    if (perSourceCounts[source] === 0) continue;
+    try {
+      const params = new URLSearchParams();
+      params.set('source', `eq.${source}`);
+      params.set('is_active', 'eq.true');
+      params.set('last_seen_at', `lt.${staleCutoff}`);
+      const r = await fetch(`${supabaseUrl}/rest/v1/jobs?${params.toString()}`, {
+        method: 'PATCH',
+        headers: {
+          apikey: supabaseKey,
+          Authorization: `Bearer ${supabaseKey}`,
+          'Content-Type': 'application/json',
+          Prefer: 'return=representation',
+        },
+        body: JSON.stringify({ is_active: false }),
+      });
+      if (r.ok) {
+        const rows = await r.json().catch(() => []);
+        expiredBySource[source] = Array.isArray(rows) ? rows.length : 0;
+      }
+    } catch (e) {
+      console.error('Expiry step failed for source', source, e.message);
+    }
+  }
+
+  // 2. Any job (any source) whose closing_date has passed. No current
+  // source reliably sets closing_date, so this is normally a no-op today —
+  // it's here so a future source that does provide one is handled correctly
+  // without further code changes.
+  let closedByDate = 0;
+  try {
+    const params = new URLSearchParams();
+    params.set('is_active', 'eq.true');
+    params.set('closing_date', `lt.${new Date().toISOString()}`);
+    const r = await fetch(`${supabaseUrl}/rest/v1/jobs?${params.toString()}`, {
+      method: 'PATCH',
+      headers: {
+        apikey: supabaseKey,
+        Authorization: `Bearer ${supabaseKey}`,
+        'Content-Type': 'application/json',
+        Prefer: 'return=representation',
+      },
+      body: JSON.stringify({ is_active: false }),
+    });
+    if (r.ok) {
+      const rows = await r.json().catch(() => []);
+      closedByDate = Array.isArray(rows) ? rows.length : 0;
+    }
+  } catch (e) {
+    console.error('Closing-date expiry step failed:', e.message);
+  }
+
+  return res.status(200).json({
+    ok: true,
+    synced: jobs.length,
+    perSource: perSourceCounts,
+    expiredStale: expiredBySource,
+    expiredByClosingDate: closedByDate,
+  });
 }
