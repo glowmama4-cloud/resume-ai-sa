@@ -12,7 +12,21 @@ export default async function handler(req, res) {
   // into the `or=(...)` string built below). Jobs data is public either
   // way, but there's no reason to let a search box alter query structure.
   const search = (req.query.search || '').trim().replace(/[(),]/g, '');
+
+  // employment_type: 'all' (or omitted-but-other-filters-present) means no
+  // filter; otherwise default stays 'full_time' to match existing behaviour.
   const employmentType = req.query.employment_type || 'full_time';
+
+  // Phase 3: new structured filters. Each is optional; only applied when
+  // the caller actually sends a value, and only against real columns
+  // populated by jobs-sync.js — no filter here can match a category that
+  // doesn't exist in the data.
+  const remoteScope = (req.query.remote_scope || '').trim();   // e.g. 'worldwide', 'south_africa'
+  const country = (req.query.country || '').trim();             // e.g. 'ZA'
+  const excludeCountry = (req.query.exclude_country || '').trim(); // e.g. 'ZA' -> everything NOT South Africa
+  const jobCategory = (req.query.job_category || '').trim();    // e.g. 'internship'
+  const isRemoteParam = req.query.is_remote; // 'true' | 'false' | undefined
+
   const page = parseInt(req.query.page || '1', 10);
   const pageSize = 20;
   const from = (page - 1) * pageSize;
@@ -21,9 +35,26 @@ export default async function handler(req, res) {
   const params = new URLSearchParams();
   params.set('select', '*');
   params.set('is_active', 'eq.true');
-  params.set('employment_type', `eq.${employmentType}`);
   params.set('order', 'posted_at.desc');
 
+  if (employmentType && employmentType !== 'all') {
+    params.set('employment_type', `eq.${employmentType}`);
+  }
+  if (remoteScope) {
+    params.set('remote_scope', `eq.${remoteScope}`);
+  }
+  if (country) {
+    params.set('country', `eq.${country}`);
+  }
+  if (excludeCountry) {
+    params.set('country', `neq.${excludeCountry}`);
+  }
+  if (isRemoteParam === 'true' || isRemoteParam === 'false') {
+    params.set('is_remote', `eq.${isRemoteParam}`);
+  }
+  if (jobCategory) {
+    params.set('job_category', `eq.${jobCategory}`);
+  }
   if (search) {
     params.set('or', `(title.ilike.*${search}*,company_name.ilike.*${search}*)`);
   }
