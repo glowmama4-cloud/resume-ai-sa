@@ -27,6 +27,10 @@ export default async function handler(req, res) {
   const jobCategory = (req.query.job_category || '').trim();    // e.g. 'internship'
   const isRemoteParam = req.query.is_remote; // 'true' | 'false' | undefined
   const governmentJob = req.query.government_job; // 'true' | undefined
+  // Province filter: only the nine real provinces are accepted, exactly as
+  // dpsa-sync.js writes them, so nothing else can be passed through.
+  const PROVINCES = ['Eastern Cape', 'Free State', 'Gauteng', 'KwaZulu-Natal', 'Limpopo', 'Mpumalanga', 'North West', 'Northern Cape', 'Western Cape'];
+  const province = PROVINCES.includes((req.query.province || '').trim()) ? req.query.province.trim() : '';
 
   const page = parseInt(req.query.page || '1', 10);
   const pageSize = 20;
@@ -67,6 +71,9 @@ export default async function handler(req, res) {
   }
   if (jobCategory) {
     params.set('job_category', `eq.${jobCategory}`);
+  }
+  if (province) {
+    params.set('province', `eq.${province}`);
   }
   if (search) {
     params.set('or', `(title.ilike.*${search}*,company_name.ilike.*${search}*)`);
