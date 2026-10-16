@@ -1,3 +1,29 @@
+// Government locations come from the DPSA PDFs, and sometimes the PDF's
+// page number got stuck on the end ("Provincial Office: Limpopo 18"), or
+// the next post's reference number was glued on. This tidies the location
+// for display only — the stored data is not changed. Numbers that are part
+// of a real address ("Ward 21", "Gate 3", "Unit 5") are left alone.
+const KEEP_NUMBER_AFTER = /\b(ward|unit|block|gate|section|phase|zone|building|floor|room|no|number|ext|extension|platform|wing|hall|region|district|area|cluster|camp|base|station|stand|erf|plot|road|street|avenue|level|bay|sector|township|village|site|precinct)\.?$/i;
+function tidyLocation(loc) {
+  let t = String(loc || '').replace(/\s+/g, ' ').trim();
+  // A reference number at the very start ("Ref No: SSC39/2026: ...") is not a place
+  t = t.replace(/^Ref(?:erence)?\.?\s*No\.?\s*:?\s*\S+\s*/i, '').trim();
+  // Cut off a reference number (and anything after it) that was glued on.
+  // If the advert names more places after it, say so instead of hiding them.
+  const cut = t.search(/\s+Ref(?:erence)?\.?\s*No\b/i);
+  let more = false;
+  if (cut > 0) {
+    const rest = t.slice(cut).replace(/Ref(?:erence)?\.?\s*No\.?\s*:?\s*\S+/gi, '').replace(/\(X\d+ Posts?\)/gi, '').replace(/[\s\d().,;:/-]+/g, '');
+    more = rest.length > 2;
+    t = t.slice(0, cut).trim();
+  }
+  // Remove a trailing page number, unless it belongs to the address
+  const m = t.match(/^(.*?)[\s.,;:]+(\d{1,3})$/);
+  if (m && !KEEP_NUMBER_AFTER.test(m[1].trim())) t = m[1].trim();
+  t = t.replace(/\s*\(X\d+ Posts?\)/gi, '').replace(/[\s,;:]+$/, '');
+  return more ? t + ' · more places in advert' : t;
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -104,6 +130,9 @@ export default async function handler(req, res) {
     }
 
     const jobs = await response.json();
+    for (const job of jobs) {
+      if (job && job.government_job && job.location) job.location = tidyLocation(job.location);
+    }
     const contentRange = response.headers.get('content-range');
     const total = contentRange ? parseInt(contentRange.split('/')[1], 10) : jobs.length;
 
