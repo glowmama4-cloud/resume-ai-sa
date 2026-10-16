@@ -43,7 +43,9 @@ export default async function handler(req, res) {
   // pending/rejected Government record were ever mistakenly left
   // is_active=true, it still could not reach a normal jobseeker's search.
   params.set('review_status', 'eq.published');
-  params.set('order', 'posted_at.desc');
+  // Newest first. Jobs with no posted date (some overseas feeds) go to the
+  // end instead of the top — Postgres puts empty dates first by default.
+  params.set('order', 'posted_at.desc.nullslast');
 
   if (employmentType && employmentType !== 'all') {
     params.set('employment_type', `eq.${employmentType}`);
