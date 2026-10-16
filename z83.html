@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Free Z83 Form — Fill It Online | ResumeAI SA</title>
+<meta name="description" content="Fill in the official new Z83 government application form online for free. Post details filled in for you from the job you picked. Download a ready PDF.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js" crossorigin="anonymous"></script>
+<style>
+  :root {
+    --sa-green:   #007A4D;
+    --sa-green-d: #005C39;
+    --sa-gold:    #D4A017;
+    --sa-red:     #C0392B;
+    --ink:        #16161a;
+    --ink2:       #4a4a6a;
+    --ink3:       #9090aa;
+    --surf:       #ffffff;
+    --surf2:      #f7f6f2;
+    --surf3:      #f0ede6;
+    --border:     #e2dfd8;
+    --border2:    #ccc9c0;
+    --green-bg:   #e8f5ee;
+    --green-txt:  #005C39;
+    --gold-bg:    #fffbeb;
+    --gold-txt:   #92400e;
+    --red-bg:     #fef2f2;
+    --red-txt:    #991b1b;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: 'Sora', sans-serif; background: var(--surf2); color: var(--ink); font-size: 15px; line-height: 1.55; }
+  .flag-bar { display: flex; height: 4px; }
+  .flag-bar span { flex: 1; }
+  .f1 { background: #DE3831; } .f2 { background: #fff; } .f3 { background: #002395; } .f4 { background: #FFB612; } .f5 { background: #007A4D; }
+  nav { background: var(--ink); padding: 10px 16px; min-height: 56px; display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+  .logo { font-size: 19px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 8px; text-decoration: none; }
+  .logo-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--sa-green); }
+  .logo em { color: var(--sa-gold); font-style: normal; }
+  .nav-links { display: flex; gap: 8px; flex-wrap: wrap; }
+  .nav-links a { color: #fff; text-decoration: none; font-size: 13px; font-weight: 600; padding: 7px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,.3); }
+  .nav-links a:hover { background: rgba(255,255,255,.1); }
+  @media (max-width: 420px) { .nav-links a { font-size: 12px; padding: 6px 9px; } .logo { font-size: 17px; } }
+
+  .wrap { max-width: 760px; margin: 0 auto; padding: 28px 16px 80px; }
+  .eyebrow { display: inline-block; font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--sa-green-d); background: var(--green-bg); padding: 4px 10px; border-radius: 999px; }
+  h1 { font-size: 26px; margin: 10px 0 6px; }
+  .sub { color: var(--ink2); margin: 0 0 16px; }
+  .points { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+  .points span { font-size: 12px; font-weight: 600; background: var(--surf); border: 1px solid var(--border); padding: 5px 12px; border-radius: 999px; color: var(--ink2); }
+
+  .notice { background: var(--gold-bg); border: 1px solid #f5d88a; color: var(--gold-txt); border-radius: 10px; padding: 12px 14px; font-size: 13px; margin-bottom: 16px; }
+  .notice strong { color: #6b3a05; }
+  .job-box { background: var(--green-bg); border: 1px solid #a3d9b8; color: var(--green-txt); border-radius: 10px; padding: 12px 14px; font-size: 13px; margin-bottom: 16px; display: none; }
+  .job-box.show { display: block; }
+
+  .panel { background: var(--surf); border: 1px solid var(--border); border-radius: 14px; padding: 20px; margin-bottom: 14px; }
+  .panel h2 { font-size: 16px; margin: 0 0 4px; display: flex; gap: 8px; align-items: center; }
+  .panel h2 .letter { background: var(--sa-green); color: #fff; width: 26px; height: 26px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0; }
+  .panel .hint { font-size: 13px; color: var(--ink2); margin: 0 0 14px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .grid3 { display: grid; grid-template-columns: 2fr 2fr 1fr; gap: 10px; }
+  .full { grid-column: 1 / -1; }
+  @media (max-width: 560px) { .grid2, .grid3 { grid-template-columns: 1fr; } }
+  label { display: block; font-size: 13px; font-weight: 500; color: var(--ink2); margin-bottom: 5px; }
+  .req { color: var(--sa-red); }
+  input[type=text], input[type=email], input[type=tel], input[type=date], select, textarea {
+    width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-family: inherit; font-size: 14px;
+    color: var(--ink); background: var(--surf2);
+  }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--sa-green); background: var(--surf); }
+  textarea { min-height: 70px; resize: vertical; }
+
+  .q { border-top: 1px solid var(--border); padding: 12px 0; }
+  .q:first-of-type { border-top: none; }
+  .q-text { font-size: 14px; margin-bottom: 8px; }
+  .choices { display: flex; flex-wrap: wrap; gap: 8px; }
+  .choices label { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-size: 14px; color: var(--ink); background: var(--surf2); border: 1.5px solid var(--border); border-radius: 8px; padding: 8px 14px; cursor: pointer; }
+  .choices input { accent-color: var(--sa-green); width: 16px; height: 16px; margin: 0; }
+  .choices label:has(input:checked) { border-color: var(--sa-green); background: var(--green-bg); }
+  .details { margin-top: 8px; display: none; }
+  .details.show { display: block; }
+  .q.missing .q-text { color: var(--sa-red); font-weight: 600; }
+
+  .row-block { border: 1px dashed var(--border2); border-radius: 10px; padding: 12px; margin-bottom: 10px; }
+  .row-block .row-title { font-size: 12px; font-weight: 600; color: var(--ink3); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px; }
+  .mmyy { display: flex; gap: 6px; }
+  .mmyy select { width: 55%; }
+  .mmyy input { width: 45%; }
+
+  .remember { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; color: var(--ink2); margin: 6px 0 16px; }
+  .remember input { margin-top: 3px; accent-color: var(--sa-green); width: 16px; height: 16px; }
+  .btn { width: 100%; padding: 14px; background: var(--sa-green); color: #fff; border: none; border-radius: 10px; font-family: inherit; font-size: 16px; font-weight: 700; cursor: pointer; }
+  .btn:hover { background: var(--sa-green-d); }
+  .btn:disabled { background: #9aa; cursor: wait; }
+  .btn-ghost { display: inline-block; text-align: center; padding: 11px 16px; border-radius: 10px; border: 1.5px solid var(--border2); background: var(--surf); color: var(--ink); text-decoration: none; font-weight: 600; font-size: 14px; }
+  .btn-ghost:hover { border-color: var(--sa-green); }
+  .err { display: none; background: var(--red-bg); border: 1px solid #fca5a5; color: var(--red-txt); border-radius: 10px; padding: 12px 14px; font-size: 13px; margin-top: 12px; }
+  .done { display: none; background: var(--green-bg); border: 1px solid #a3d9b8; color: var(--green-txt); border-radius: 12px; padding: 16px; margin-top: 14px; font-size: 14px; }
+  .done h3 { margin: 0 0 8px; font-size: 16px; }
+  .done ol { margin: 0 0 12px; padding-left: 20px; }
+  .done .cta-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .cta { display: inline-block; padding: 11px 16px; border-radius: 10px; background: var(--sa-gold); color: #fff; text-decoration: none; font-weight: 700; font-size: 14px; }
+  .cta:hover { background: #b8891a; }
+  footer { text-align: center; padding: 26px 16px; font-size: 12px; color: var(--ink3); border-top: 1px solid var(--border); }
+  footer a { color: var(--sa-green); text-decoration: none; }
+</style>
+</head>
+<body>
+
+<div class="flag-bar"><span class="f1"></span><span class="f2"></span><span class="f3"></span><span class="f4"></span><span class="f5"></span></div>
+<nav>
+  <a class="logo" href="/"><span class="logo-dot"></span>Resume<em>AI</em>&nbsp;SA</a>
+  <div class="nav-links">
+    <a href="/careers.html">💼 Jobs</a>
+    <a href="/#app-section">📄 Build CV</a>
+  </div>
+</nav>
+
+<div class="wrap">
+  <span class="eyebrow">Free · Official new Z83</span>
+  <h1>Fill your Z83 online</h1>
+  <p class="sub">Answer the questions below and download the official government Z83 application form, filled in and ready to sign.</p>
+  <div class="points">
+    <span>✅ Official DPSA form (effective 1 Jan 2021)</span>
+    <span>🔒 Your details stay on your phone or computer</span>
+    <span>⚡ Post details filled in for you</span>
+  </div>
+
+  <div class="job-box" id="jobBox"></div>
+
+  <div class="notice">
+    <strong>Important:</strong> every section of the Z83 is compulsory, and an incomplete Z83 can get your application disqualified.
+    Answer honestly — you sign it as true and correct. After downloading, <strong>sign it</strong> and attach your CV and any documents the advert asks for.
+  </div>
+
+  <form id="z83" novalidate>
+
+  <!-- A -->
+  <div class="panel">
+    <h2><span class="letter">A</span> The advertised post</h2>
+    <p class="hint">Copy these exactly as they appear in the advert.</p>
+    <div class="grid2">
+      <div class="full"><label>Position you are applying for <span class="req">*</span></label><input type="text" id="a_post" maxlength="120" required></div>
+      <div><label>Department where it was advertised <span class="req">*</span></label><input type="text" id="a_dept" maxlength="120" required></div>
+      <div><label>Reference number <span class="req">*</span></label><input type="text" id="a_ref" maxlength="60" required></div>
+      <div class="full"><label>If offered the post, when can you start / how much notice must you give? <span class="req">*</span></label><input type="text" id="a_notice" maxlength="80" placeholder="e.g. Immediately, or 1 month notice" required></div>
+    </div>
+  </div>
+
+  <!-- B -->
+  <div class="panel">
+    <h2><span class="letter">B</span> Personal information</h2>
+    <p class="hint">Your details must match your ID or passport.</p>
+    <div class="grid2">
+      <div><label>Surname <span class="req">*</span></label><input type="text" id="b_surname" maxlength="60" required></div>
+      <div><label>Full names <span class="req">*</span></label><input type="text" id="b_names" maxlength="80" required></div>
+      <div><label>Date of birth <span class="req">*</span></label><input type="date" id="b_dob" required></div>
+      <div><label>South African ID number</label><input type="text" id="b_id" inputmode="numeric" maxlength="13" placeholder="13 digits"></div>
+      <div class="full"><label>Passport number <span style="font-weight:400;color:var(--ink3)">(only if you are not South African)</span></label><input type="text" id="b_passport" maxlength="13"></div>
+    </div>
+
+    <div class="q" data-q="race"><div class="q-text">Race <span class="req">*</span></div>
+      <div class="choices">
+        <label><input type="radio" name="race" value="Choice1">African</label>
+        <label><input type="radio" name="race" value="Choice2">White</label>
+        <label><input type="radio" name="race" value="Choice3">Coloured</label>
+        <label><input type="radio" name="race" value="Choice4">Indian</label>
+        <label><input type="radio" name="race" value="Choice5">Other</label>
+      </div></div>
+    <div class="q" data-q="gender"><div class="q-text">Gender <span class="req">*</span></div>
+      <div class="choices">
+        <label><input type="radio" name="gender" value="Choice6">Female</label>
+        <label><input type="radio" name="gender" value="Choice7">Male</label>
+      </div></div>
+
+    <div id="yesno"></div>
+
+    <div class="grid2" style="margin-top:10px">
+      <div><label>Years of experience — private sector</label><input type="text" id="b_yrs_private" maxlength="4" inputmode="numeric" placeholder="e.g. 3"></div>
+      <div><label>Years of experience — public sector</label><input type="text" id="b_yrs_public" maxlength="4" inputmode="numeric" placeholder="e.g. 0"></div>
+      <div><label>Professional registration date <span style="font-weight:400;color:var(--ink3)">(if your job needs one)</span></label><input type="text" id="b_reg_date" maxlength="12" placeholder="e.g. 15/03/2019"></div>
+      <div><label>Registration number</label><input type="text" id="b_reg_no" maxlength="20" placeholder="e.g. SANC 12345"></div>
+    </div>
+  </div>
+
+  <!-- C -->
+  <div class="panel">
+    <h2><span class="letter">C</span> Contact details</h2>
+    <div class="grid2">
+      <div><label>Preferred language for correspondence <span class="req">*</span></label><input type="text" id="c_lang" maxlength="30" placeholder="e.g. English"></div>
+    </div>
+    <div class="q" data-q="contact"><div class="q-text">How should they contact you? <span class="req">*</span></div>
+      <div class="choices">
+        <label><input type="radio" name="contact" value="Choice1">Post</label>
+        <label><input type="radio" name="contact" value="Choice2">E-mail</label>
+        <label><input type="radio" name="contact" value="Choice3">Fax</label>
+        <label><input type="radio" name="contact" value="Choice4">Telephone</label>
+      </div></div>
+    <label>Your contact details for that method <span class="req">*</span></label>
+    <textarea id="c_details" maxlength="160" placeholder="e.g. thandi@email.com, cell 071 000 0000"></textarea>
+  </div>
+
+  <!-- D -->
+  <div class="panel">
+    <h2><span class="letter">D</span> South African official languages</h2>
+    <p class="hint">Up to 5 languages. Rate how well you speak and read/write each one.</p>
+    <div id="langs"></div>
+  </div>
+
+  <!-- E -->
+  <div class="panel">
+    <h2><span class="letter">E</span> Qualifications</h2>
+    <p class="hint">Start with your highest. Up to 4. Attach copies only if the advert asks for them.</p>
+    <div id="quals"></div>
+    <label style="margin-top:6px">Current study (institution and qualification)</label>
+    <input type="text" id="e_current" maxlength="120" placeholder="Leave empty if you are not studying now">
+  </div>
+
+  <!-- F -->
+  <div class="panel">
+    <h2><span class="letter">F</span> Work experience</h2>
+    <p class="hint">Most recent first, including your current job. Up to 3.</p>
+    <div id="jobs"></div>
+    <div class="q" data-q="psCondition"><div class="q-text">If you were employed in the Public Service before, is there any condition that prevents your re-appointment? <span class="req">*</span></div>
+      <div class="choices">
+        <label><input type="radio" name="psCondition" value="Choice1">Yes</label>
+        <label><input type="radio" name="psCondition" value="Choice2">No</label>
+      </div>
+      <div class="details"><input type="text" id="f_ps_details" maxlength="120" placeholder="Name of the previous department and the condition"></div>
+    </div>
+  </div>
+
+  <!-- G -->
+  <div class="panel">
+    <h2><span class="letter">G</span> References</h2>
+    <p class="hint">People who know your work, e.g. a manager or supervisor. Up to 3.</p>
+    <div id="refs"></div>
+  </div>
+
+  <!-- Declaration -->
+  <div class="panel">
+    <h2><span class="letter">✓</span> Declaration</h2>
+    <p class="hint">The Z83 declaration says all information is complete and correct and that false information can disqualify you or lead to dismissal. Today's date is added for you. <strong>You still need to sign the form</strong> after downloading — by hand after printing, or with a digital signature.</p>
+    <div class="grid2">
+      <div><label>Your initials (written at the bottom of each page)</label><input type="text" id="g_initials" maxlength="8" placeholder="e.g. T.M."></div>
+    </div>
+  </div>
+
+  <label class="remember"><input type="checkbox" id="remember">
+    <span>Remember my details <strong>on this device</strong> for my next Z83 (the post details are not saved). Don't tick this on a shared or internet-café computer.</span>
+  </label>
+
+  <button type="submit" class="btn" id="goBtn">⬇ Download my Z83 (PDF)</button>
+  <div class="err" id="err"></div>
+
+  <div class="done" id="done">
+    <h3>✅ Your Z83 is downloaded</h3>
+    <ol>
+      <li>Open the PDF and check every answer.</li>
+      <li><strong>Sign it</strong> and write your initials on each page if they're not filled in.</li>
+      <li>Attach a CV that matches this post, plus any documents the advert asks for.</li>
+      <li>Apply exactly the way the advert says (online portal, e-mail or hand delivery), before the closing date.</li>
+    </ol>
+    <div class="cta-row">
+      <a class="cta" href="/#app-section" id="cvLink">📄 Build my CV for this post</a>
+      <a class="btn-ghost" href="/careers.html?tab=government">🏛 More government jobs</a>
+    </div>
+  </div>
+
+  </form>
+</div>
+
+<footer>
+  <strong>ResumeAI SA</strong> — the Z83 is the official form of the Department of Public Service and Administration.
+  ResumeAI SA only helps you fill it in; we do not submit applications or store your answers.<br>
+  <a href="/">Home</a> · <a href="/careers.html">Jobs</a>
+</footer>
+
+<script>
+/* ── Yes / No questions (Part B), mapped to the official form's fields ──
+   value Choice6 = Yes, Choice7 = No on the Z83. Nothing is pre-ticked:
+   these are declarations the jobseeker must answer themselves. */
+const YESNO = [
+  { id: 'disability', group: 'Group4', text: 'Do you have a disability?' },
+  { id: 'citizen', group: 'Group5', text: 'Are you a South African citizen?', ifNo: { id: 'nationality', field: 'Text5', placeholder: 'Your nationality' } },
+  { id: 'permit', group: 'Group6', text: 'Do you have a valid work permit? (only if you are not South African)', onlyIfNotCitizen: true },
+  { id: 'convicted', group: 'Group7', text: 'Have you been convicted or found guilty of a criminal offence (including an admission of guilt)?', details: 'Text6' },
+  { id: 'pendingCriminal', group: 'Group8', text: 'Do you have any pending criminal case against you?', details: 'Text7' },
+  { id: 'dismissed', group: 'Group9', text: 'Have you ever been dismissed for misconduct from the Public Service?', details: 'Text8' },
+  { id: 'pendingDisciplinary', group: 'Group10', text: 'Do you have any pending disciplinary case against you?', details: 'Text9' },
+  { id: 'resigned', group: 'Group11', text: 'Have you resigned from a recent job pending any disciplinary proceeding against you?', details: 'Text10' },
+  { id: 'discharged', group: 'Group12', text: 'Have you been discharged or retired from the Public Service on grounds of ill-health, or on condition that you cannot be re-employed?' },
+  { id: 'business', group: 'Group13', text: 'Are you conducting business with the State, or are you a Director of a Public or Private company conducting business with the State?', details: 'Text11' },
+  { id: 'relinquish', group: 'Group14', text: 'If you are employed in the Public Service, will you immediately relinquish such business interests?' },
+];
+
+const MONTHS = ['', '1','2','3','4','5','6','7','8','9','10','11','12'];
+const MONTH_NAMES = ['Month', 'Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+function el(html) { const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstChild; }
+function $(id) { return document.getElementById(id); }
+
+/* ── Build the repeating parts of the form ── */
+(function build() {
+  const yn = $('yesno');
+  YESNO.forEach((q) => {
+    const block = el(`<div class="q" data-q="${q.id}"${q.onlyIfNotCitizen ? ' style="display:none"' : ''}>
+      <div class="q-text">${q.text} <span class="req">*</span></div>
+      <div class="choices">
+        <label><input type="radio" name="${q.id}" value="Choice6">Yes</label>
+        <label><input type="radio" name="${q.id}" value="Choice7">No</label>
+      </div>
+      ${q.details ? `<div class="details" data-when="Choice6"><input type="text" id="d_${q.id}" maxlength="120" placeholder="If yes, give the details"></div>` : ''}
+      ${q.ifNo ? `<div class="details" data-when="Choice7"><input type="text" id="d_${q.ifNo.id}" maxlength="40" placeholder="${q.ifNo.placeholder}"></div>` : ''}
+    </div>`);
+    yn.appendChild(block);
+  });
+
+  const langs = $('langs');
+  const rating = '<option value="">—</option><option>Good</option><option>Fair</option><option>Poor</option>';
+  for (let i = 0; i < 5; i++) {
+    langs.appendChild(el(`<div class="grid3" style="margin-bottom:8px">
+      <div><label>${i === 0 ? 'Language' : '&nbsp;'}</label><input type="text" id="lang_${i}" maxlength="20" placeholder="${['e.g. English','e.g. isiZulu','','',''][i]}"></div>
+      <div><label>${i === 0 ? 'Speak' : '&nbsp;'}</label><select id="lang_s_${i}">${rating}</select></div>
+      <div><label>${i === 0 ? 'Read / write' : '&nbsp;'}</label><select id="lang_w_${i}">${rating}</select></div>
+    </div>`));
+  }
+
+  const quals = $('quals');
+  for (let i = 1; i <= 4; i++) {
+    quals.appendChild(el(`<div class="grid3" style="margin-bottom:8px">
+      <div><label>${i === 1 ? 'School / college / university' : '&nbsp;'}</label><input type="text" id="q_school_${i}" maxlength="60"></div>
+      <div><label>${i === 1 ? 'Qualification' : '&nbsp;'}</label><input type="text" id="q_name_${i}" maxlength="60" placeholder="${i === 1 ? 'e.g. Grade 12 / Matric' : ''}"></div>
+      <div><label>${i === 1 ? 'Year' : '&nbsp;'}</label><input type="text" id="q_year_${i}" maxlength="4" inputmode="numeric"></div>
+    </div>`));
+  }
+
+  const monthOpts = MONTHS.map((m, i) => `<option value="${m}">${MONTH_NAMES[i]}</option>`).join('');
+  const jobs = $('jobs');
+  for (let i = 1; i <= 3; i++) {
+    jobs.appendChild(el(`<div class="row-block">
+      <div class="row-title">Job ${i}${i === 1 ? ' (most recent)' : ''}</div>
+      <div class="grid2">
+        <div><label>Employer</label><input type="text" id="w_emp_${i}" maxlength="50"></div>
+        <div><label>Post held</label><input type="text" id="w_post_${i}" maxlength="40"></div>
+        <div><label>From</label><div class="mmyy"><select id="w_fm_${i}">${monthOpts}</select><input type="text" id="w_fy_${i}" maxlength="4" inputmode="numeric" placeholder="Year"></div></div>
+        <div><label>To <span style="font-weight:400;color:var(--ink3)">(empty if current job)</span></label><div class="mmyy"><select id="w_tm_${i}">${monthOpts}</select><input type="text" id="w_ty_${i}" maxlength="4" inputmode="numeric" placeholder="Year"></div></div>
+        <div class="full"><label>Reason for leaving</label><input type="text" id="w_reason_${i}" maxlength="50" placeholder="${i === 1 ? 'e.g. Still employed / Contract ended' : ''}"></div>
+      </div>
+    </div>`));
+  }
+
+  const refs = $('refs');
+  for (let i = 1; i <= 3; i++) {
+    refs.appendChild(el(`<div class="grid3" style="margin-bottom:8px">
+      <div><label>${i === 1 ? 'Name' : '&nbsp;'}</label><input type="text" id="r_name_${i}" maxlength="40"></div>
+      <div><label>${i === 1 ? 'Relationship to you' : '&nbsp;'}</label><input type="text" id="r_rel_${i}" maxlength="40" placeholder="${i === 1 ? 'e.g. Former manager' : ''}"></div>
+      <div><label>${i === 1 ? 'Tel (office hours)' : '&nbsp;'}</label><input type="tel" id="r_tel_${i}" maxlength="20"></div>
+    </div>`));
+  }
+})();
+
+/* Show "details" boxes only when they apply */
+document.addEventListener('change', (e) => {
+  if (e.target.type !== 'radio') return;
+  const q = e.target.closest('.q');
+  if (!q) return;
+  q.classList.remove('missing');
+  q.querySelectorAll('.details').forEach((d) => {
+    const when = d.dataset.when || 'Choice1';
+    d.classList.toggle('show', e.target.value === when);
+  });
+  if (e.target.name === 'citizen') {
+    const permit = document.querySelector('[data-q="permit"]');
+    permit.style.display = e.target.value === 'Choice7' ? '' : 'none';
+  }
+});
+
+/* Initials suggestion from full names + surname */
+function suggestInitials() {
+  const f = $('g_initials');
+  if (f.dataset.touched) return;
+  const names = ($('b_names').value + ' ' + $('b_surname').value).trim().split(/\s+/).filter(Boolean);
+  f.value = names.map((n) => n[0].toUpperCase() + '.').join('');
+}
+$('b_names').addEventListener('input', suggestInitials);
+$('b_surname').addEventListener('input', suggestInitials);
+$('g_initials').addEventListener('input', () => { $('g_initials').dataset.touched = '1'; });
+
+/* ── Post details from the job the jobseeker clicked (careers page link) ── */
+(function prefillPost() {
+  const p = new URLSearchParams(location.search);
+  const post = p.get('post'), dept = p.get('dept'), ref = p.get('ref'), circ = p.get('circular');
+  if (post) $('a_post').value = post.slice(0, 120);
+  if (dept) $('a_dept').value = dept.slice(0, 120);
+  if (ref) $('a_ref').value = ref.slice(0, 60);
+  if (post) {
+    const box = $('jobBox');
+    box.textContent = '';
+    box.append('🏛 Filling in your Z83 for: ');
+    const b = document.createElement('strong'); b.textContent = post; box.append(b);
+    if (ref) box.append(' · Ref ' + ref);
+    if (circ) box.append(' · DPSA Circular ' + circ);
+    box.classList.add('show');
+    $('cvLink').href = '/?job=' + encodeURIComponent(post) + '#app-section';
+  }
+})();
+
+/* ── Remember details on this device (opt-in only) ── */
+const STORE_KEY = 'resumeai_z83_details_v1';
+const NOT_SAVED = new Set(['a_post', 'a_dept', 'a_ref']);
+function collectForStore() {
+  const data = { inputs: {}, radios: {} };
+  document.querySelectorAll('#z83 input[type=text], #z83 input[type=tel], #z83 input[type=date], #z83 select, #z83 textarea').forEach((i) => {
+    if (i.id && !NOT_SAVED.has(i.id)) data.inputs[i.id] = i.value;
+  });
+  document.querySelectorAll('#z83 input[type=radio]:checked').forEach((r) => { data.radios[r.name] = r.value; });
+  return data;
+}
+function restoreFromStore() {
+  let raw = null;
+  try { raw = localStorage.getItem(STORE_KEY); } catch (e) { return; }
+  if (!raw) return;
+  try {
+    const data = JSON.parse(raw);
+    Object.entries(data.inputs || {}).forEach(([id, v]) => { const i = $(id); if (i && !NOT_SAVED.has(id)) i.value = v; });
+    Object.entries(data.radios || {}).forEach(([name, v]) => {
+      const r = document.querySelector(`#z83 input[name="${name}"][value="${v}"]`);
+      if (r) { r.checked = true; r.dispatchEvent(new Event('change', { bubbles: true })); }
+    });
+    $('remember').checked = true;
+    if ($('g_initials').value) $('g_initials').dataset.touched = '1';
+  } catch (e) { /* ignore broken data */ }
+}
+restoreFromStore();
+$('remember').addEventListener('change', () => {
+  if (!$('remember').checked) { try { localStorage.removeItem(STORE_KEY); } catch (e) {} }
+});
+
+/* ── Helpers for writing into the PDF ── */
+// The form's built-in font can only print Western European characters.
+// Swap anything else (emoji, unusual symbols) so the download never fails.
+function clean(v) {
+  return String(v || '')
+    .replace(/[\u2018\u2019]/g, "'").replace(/[\u201C\u201D]/g, '"').replace(/[\u2013\u2014]/g, '-')
+    .replace(/[^\x20-\x7E\xA0-\xFF]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+function val(id) { const e = $(id); return e ? clean(e.value) : ''; }
+function radio(name) { const r = document.querySelector(`#z83 input[name="${name}"]:checked`); return r ? r.value : ''; }
+function yy(y) { const s = String(y || '').replace(/\D/g, ''); return s.length >= 2 ? s.slice(-2) : s; }
+function ddmmyy(iso) { if (!iso) return ''; const [Y, M, D] = iso.split('-'); return `${D}/${M}/${Y.slice(-2)}`; }
+
+function showError(msg) { const e = $('err'); e.textContent = msg; e.style.display = 'block'; e.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+
+/* ── Check the compulsory parts before building the PDF ── */
+function validate() {
+  const problems = [];
+  [['a_post', 'Position'], ['a_dept', 'Department'], ['a_ref', 'Reference number'], ['a_notice', 'When you can start / notice'],
+   ['b_surname', 'Surname'], ['b_names', 'Full names'], ['b_dob', 'Date of birth'], ['c_lang', 'Preferred language'], ['c_details', 'Contact details']]
+    .forEach(([id, name]) => { if (!val(id)) problems.push(name); });
+
+  const id = val('b_id').replace(/\s/g, '');
+  if (!id && !val('b_passport')) problems.push('SA ID number (or passport number if you are not South African)');
+  if (id && !/^\d{13}$/.test(id)) problems.push('SA ID number must be exactly 13 digits');
+
+  const needRadios = ['race', 'gender', 'contact', 'psCondition'].concat(YESNO.filter((q) => !q.onlyIfNotCitizen).map((q) => q.id));
+  if (radio('citizen') === 'Choice7') needRadios.push('permit');
+  document.querySelectorAll('.q.missing').forEach((q) => q.classList.remove('missing'));
+  needRadios.forEach((name) => {
+    if (!radio(name)) {
+      const q = document.querySelector(`.q[data-q="${name}"]`);
+      if (q) q.classList.add('missing');
+      problems.push('Answer: ' + (q ? q.querySelector('.q-text').textContent.replace('*', '').trim() : name));
+    }
+  });
+  YESNO.forEach((q) => { if (q.details && radio(q.id) === 'Choice6' && !val('d_' + q.id)) problems.push('Details for: ' + q.text); });
+  if (radio('citizen') === 'Choice7' && !val('d_nationality')) problems.push('Your nationality');
+  if (radio('psCondition') === 'Choice1' && !val('f_ps_details')) problems.push('Details of the previous Public Service condition');
+  return problems;
+}
+
+/* ── Fill the official Z83 and download it ── */
+$('z83').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  $('err').style.display = 'none';
+  $('done').style.display = 'none';
+
+  const problems = validate();
+  if (problems.length) {
+    showError('Please complete: ' + problems.slice(0, 6).join(' · ') + (problems.length > 6 ? ` (and ${problems.length - 6} more)` : ''));
+    return;
+  }
+  if (!window.PDFLib) { showError('The form tool did not load. Please check your connection and refresh the page.'); return; }
+
+  const btn = $('goBtn');
+  btn.disabled = true;
+  btn.textContent = 'Preparing your Z83…';
+
+  try {
+    const resp = await fetch('/api/z83-form');
+    if (!resp.ok) throw new Error('Could not get the official Z83 form right now. Please try again in a minute.');
+    const pdfDoc = await PDFLib.PDFDocument.load(await resp.arrayBuffer());
+    const form = pdfDoc.getForm();
+    const T = (name, v) => { if (v) form.getTextField(name).setText(clean(v)); };
+    const R = (name, v) => { if (v) form.getRadioGroup(name).select(v); };
+    const D = (name, v) => { if (v) form.getDropdown(name).select(v); };
+
+    // A
+    T('Position for which you are applying as advertised', val('a_post'));
+    T('Department where the position was advertised', val('a_dept'));
+    T('Reference number as stated in the advert', val('a_ref'));
+    T('If you are offered the position when can you start OR how much notice must you serve with your current employer', val('a_notice'));
+    // B
+    T('Surname and Full names', val('b_surname'));
+    T('Surname and Full names_2', val('b_names'));
+    T('DDMMYY', ddmmyy($('b_dob').value));
+    T('Identity Number', val('b_id').replace(/\s/g, ''));
+    T('Passport2 number', val('b_passport'));
+    R('Group2', radio('race'));
+    R('Group3', radio('gender'));
+    YESNO.forEach((q) => {
+      if (q.onlyIfNotCitizen && radio('citizen') !== 'Choice7') return;
+      R(q.group, radio(q.id));
+      if (q.details && radio(q.id) === 'Choice6') T(q.details, val('d_' + q.id));
+    });
+    if (radio('citizen') === 'Choice7') T('Text5', val('d_nationality'));
+    T('Text12', val('b_yrs_private'));
+    T('Text14', val('b_yrs_public'));
+    T('Text15', val('b_reg_date'));
+    T('Text16', val('b_reg_no'));
+    // C
+    T('Preferred language for correspondence', val('c_lang'));
+    R('Group16', radio('contact'));
+    T('Contact details in terms of the above', val('c_details'));
+    // D
+    const langFields = ['Languages specifyRow1', 'Languages specifyRow1_2', 'Languages specifyRow1_3', 'Languages specifyRow1_4', 'Languages specifyRow1_5'];
+    for (let i = 0; i < 5; i++) {
+      if (!val('lang_' + i)) continue;
+      T(langFields[i], val('lang_' + i));
+      D('Dropdown3.0.' + i, $('lang_s_' + i).value);
+      D('Dropdown3.1.' + i, $('lang_w_' + i).value);
+    }
+    // E
+    for (let i = 1; i <= 4; i++) {
+      T('Name of SchoolTechnical CollegeRow' + i, val('q_school_' + i));
+      T('Name of qualification obtainedRow' + i, val('q_name_' + i));
+      T('Year obtainedRow' + i, val('q_year_' + i));
+    }
+    T('Current study institution and qualification', val('e_current'));
+    // F
+    for (let i = 1; i <= 3; i++) {
+      T('Employer including current employerRow' + i, val('w_emp_' + i));
+      T('Post heldRow' + i, val('w_post_' + i));
+      D(`Dropdown1.${i - 1}.0`, $('w_fm_' + i).value);
+      T('YYRow' + i, yy(val('w_fy_' + i)));
+      D(`Dropdown1.${i - 1}.1`, $('w_tm_' + i).value);
+      T('YYRow' + i + '_2', yy(val('w_ty_' + i)));
+      T('Reason for leavingRow' + i, val('w_reason_' + i));
+    }
+    R('Group17', radio('psCondition'));
+    if (radio('psCondition') === 'Choice1') T('If yes Provide the name of the previous employing department and indicate the nature of the condition', val('f_ps_details'));
+    // G
+    for (let i = 1; i <= 3; i++) {
+      T('NameRow' + i, val('r_name_' + i));
+      T('Relationship to youRow' + i, val('r_rel_' + i));
+      T('Tel No office hoursRow' + i, val('r_tel_' + i));
+    }
+    // Declaration (signature is left for the jobseeker)
+    const now = new Date();
+    T('Date', `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`);
+    T('Text1', val('g_initials'));
+    T('Initials', val('g_initials'));
+
+    form.updateFieldAppearances();
+    const bytes = await pdfDoc.save();
+
+    const safe = (s) => s.replace(/[^A-Za-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 40);
+    const fileName = `Z83_${safe(val('b_surname')) || 'Applicant'}_${safe(val('a_ref')) || 'post'}.pdf`;
+    const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+    const a = document.createElement('a');
+    a.href = url; a.download = fileName;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+
+    if ($('remember').checked) {
+      try { localStorage.setItem(STORE_KEY, JSON.stringify(collectForStore())); } catch (err) { /* storage blocked: ignore */ }
+    }
+    $('done').style.display = 'block';
+    $('done').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  } catch (err) {
+    console.error(err);
+    showError(err.message || 'Something went wrong while preparing your Z83. Please try again.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '⬇ Download my Z83 (PDF)';
+  }
+});
+</script>
+</body>
+</html>
