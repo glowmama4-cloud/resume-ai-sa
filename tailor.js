@@ -31,6 +31,84 @@
   document.head.appendChild(s);
 })();
 
+/* ── Honest Pro plan wording + Pro extras fix ──
+ * The Pro plan gives 30 credits that never expire (see api/notify.js), so
+ * the price card and paywall now say exactly that instead of "Unlimited".
+ * Prices are NOT changed. Every CV, cover letter or LinkedIn bio uses 1
+ * credit (the server already works this way).
+ *
+ * Pro extras (cover letter, LinkedIn bio) used to show only while someone
+ * had 10+ credits, so a Pro buyer lost them after using 21 credits. Now
+ * they also show for anyone with a completed Pro payment on record.
+ */
+(function proPlanWording() {
+  function apply() {
+    const proBtn = document.querySelector('.price-card button[onclick*="buyPlan(\'pro\')"]');
+    const card = proBtn && proBtn.closest('.price-card');
+    if (card) {
+      const note = card.querySelector('.price-currency');
+      if (note) note.textContent = 'ZAR · one-time · credits never expire';
+      const list = card.querySelector('.price-features');
+      if (list) {
+        list.innerHTML = '';
+        ['30 credits — 1 per CV, cover letter or LinkedIn bio',
+         'Tailor a CV to each job you apply for',
+         'Cover letter for each application',
+         'LinkedIn bio',
+         'ATS-friendly format',
+         'Credits never expire'].forEach(function (txt) {
+          const li = document.createElement('li');
+          li.textContent = txt;
+          list.appendChild(li);
+        });
+      }
+    }
+    // "Multiple job templates" is not a real feature — remove the crossed-out lines
+    document.querySelectorAll('.price-features li').forEach(function (li) {
+      if (/multiple job templates/i.test(li.textContent)) li.remove();
+    });
+    const ppPro = document.getElementById('pp-pro');
+    if (ppPro) {
+      const n = ppPro.querySelector('.pplan-note');
+      if (n) n.textContent = 'ZAR · one-time';
+      const c = ppPro.querySelector('.pplan-cvs');
+      if (c) c.textContent = '30 credits: tailored CVs, cover letters & LinkedIn bio';
+    }
+    const title = document.querySelector('.pro-extras-title');
+    if (title) title.textContent = '✨ Pro Extras — each one uses 1 credit';
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', apply);
+  else apply();
+})();
+
+(function proExtrasFix() {
+  const proCache = {};
+  async function hasProPurchase() {
+    if (typeof currentUser === 'undefined' || !currentUser) return false;
+    if (currentUser.id in proCache) return proCache[currentUser.id];
+    let found = false;
+    try {
+      const sb = typeof getSupabase === 'function' ? getSupabase() : null;
+      if (sb) {
+        const { data, error } = await sb.from('payment_logs')
+          .select('id').eq('user_id', currentUser.id).eq('plan', 'pro').limit(1);
+        found = !error && Array.isArray(data) && data.length > 0;
+      }
+    } catch (e) { found = false; }
+    proCache[currentUser.id] = found;
+    return found;
+  }
+  window.showProExtras = async function () {
+    if (typeof currentUser === 'undefined' || !currentUser) return;
+    const box = document.getElementById('pro-extras');
+    if (!box) return;
+    // Same rule as before (10+ credits) OR a Pro purchase on record
+    if ((typeof serverCredits === 'number' && serverCredits >= 10) || await hasProPurchase()) {
+      box.classList.remove('hide');
+    }
+  };
+})();
+
 (function () {
   let tailorJob = null;
 
