@@ -1,617 +1,374 @@
 // DPSA (Department of Public Service and Administration) Government Jobs sync.
 //
-// Source of truth: the official Public Service Vacancy Circular listing at
-// https://www.dpsa.gov.za/newsroom/psvc/ and the single consolidated master
-// PDF each weekly circular publishes (confirmed during the proof-of-concept
-// against the real, current circular — see the Phase 3 DPSA report).
+// Source of truth: the official Public Service Vacancy Circulars at
+// https://www.dpsa.gov.za/newsroom/psvc/ . Each weekly circular page links
+// one small PDF per department / province ("annexure"). We read those, turn
+// every post into its own vacancy, and save it in the `jobs` table.
 //
-// This does NOT hardcode a circular number. It discovers the latest one from
-// the listing page every run, and skips re-processing a circular it has
-// already handled (tracked in dpsa_sync_log).
+// What this version fixes (October 2026):
+//   1. pdf.js is imported statically, so Vercel actually bundles it. The old
+//      createRequire() call was invisible to Vercel's file tracer, so the
+//      library was missing in production and every run failed.
+//   2. A failed run no longer marks a circular as "done" forever. Only a run
+//      that imported every department writes the "importer v2: complete"
+//      log entry that makes later runs skip that circular.
+//   3. The last 3 circulars are checked (posts stay open 2-3 weeks), not
+//      only the newest one.
+//   4. Work is split per department PDF and stops safely before Vercel's
+//      time limit; the next run carries on where this one stopped.
+//   5. Better reading of "how to apply" (online portals such as
+//      westerncape.gov.za/jobs, kznonline.gov.za, erecruitment.mpg.gov.za),
+//      internship stipends, sub-departments inside provincial annexures.
+//      All of that lives in ./_lib/dpsaParse.js.
 //
-// Confidence model: only HIGH confidence vacancies are published
-// (is_active=true, review_status='published'). MEDIUM/LOW go to
-// review_status='pending_review' with is_active=false, for a human to check
-// in admin.html. Nothing is ever guessed into existence — a field we can't
-// find stays null and pulls the record's confidence down instead.
+// Nothing is guessed: a field that cannot be found stays empty. HIGH and
+// MEDIUM confidence posts are published (every one keeps a link to the
+// official PDF). LOW confidence posts go to the admin review queue.
+// Posts whose closing date has already passed are never published.
 
-import { createRequire } from 'module';
-const require = createRequire(import.meta.url);
+import pdfjsLib from 'pdfjs-dist/legacy/build/pdf.js';
+import pdfjsWorker from 'pdfjs-dist/legacy/build/pdf.worker.js';
+import { parseVacancies } from './_lib/dpsaParse.js';
 
-const PROVINCIAL_ADMINISTRATIONS = [
-  'GAUTENG',
-  'KWAZULU NATAL',
-  'KWAZULU-NATAL',
-  'LIMPOPO',
-  'NORTH WEST',
-  'WESTERN CAPE',
-  'EASTERN CAPE',
-  'FREE STATE',
-  'MPUMALANGA',
-  'NORTHERN CAPE',
-];
+// Run pdf.js's worker code in this same process (no separate worker file).
+globalThis.pdfjsWorker = pdfjsWorker;
 
-const FIELD_LABELS = [
-  'SALARY',
-  'CENTRE',
-  'REQUIREMENTS',
-  'DUTIES',
-  'ENQUIRIES',
-  'APPLICATIONS',
-  'FOR ATTENTION',
-  'NOTE',
-  'CLOSING DATE',
-];
+export const config = {
+  maxDuration: 60,
+};
 
-const ERRATUM_PATTERN = /\b(ERRATUM|WITHDRAWN|WITHDRAWAL|CORRECTION|AMENDMENT)\b/i;
+const DPSA_BASE = 'https://www.dpsa.gov.za';
+const LISTING_URL = `${DPSA_BASE}/newsroom/psvc/`;
+const CIRCULARS_TO_CHECK = 3;
+const TIME_BUDGET_MS = 45 * 1000;      // stop starting new work after 45s
+const MIN_TIME_FOR_A_FILE_MS = 8 * 1000;
+const COMPLETE_NOTE = 'importer v2: complete';
+const FETCH_HEADERS = { 'User-Agent': 'ResumeAI-SA jobs importer (+https://www.resumeaisa.co.za)' };
 
-// ── 1. Discover the latest circular ──
-async function discoverLatestCircular() {
-  const listingUrl = 'https://www.dpsa.gov.za/newsroom/psvc/';
-  const r = await fetch(listingUrl);
+// ── 1. Which circulars are on the DPSA listing page? (newest first) ──
+async function discoverCirculars() {
+  const r = await fetch(LISTING_URL, { headers: FETCH_HEADERS });
   if (!r.ok) throw new Error(`Could not reach DPSA listing page (${r.status})`);
   const html = await r.text();
-
-  // Matches link text like "Circular 34 of 2026"
-  const matches = [...html.matchAll(/Circular\s+(\d+)\s+of\s+(\d{4})/gi)];
-  if (matches.length === 0) throw new Error('Could not find any circular listed on the DPSA page.');
-
-  let latest = null;
-  for (const m of matches) {
+  const seen = new Map();
+  for (const m of html.matchAll(/Circular\s+(\d+)\s+of\s+(\d{4})/gi)) {
     const number = parseInt(m[1], 10);
     const year = parseInt(m[2], 10);
-    if (!latest || year > latest.year || (year === latest.year && number > latest.number)) {
-      latest = { number, year };
-    }
+    seen.set(`${year}-${number}`, { number, year });
   }
-
-  const paddedNumber = String(latest.number).padStart(2, '0');
-  const pdfUrl =
-    `https://www.dpsa.gov.za/dpsa2g/documents/vacancies/${latest.year}/` +
-    `PSV%20CIRCULAR%20${paddedNumber}%20of%20${latest.year}.pdf`;
-  const sourceUrl = `https://www.dpsa.gov.za/newsroom/psvc/circular-${latest.number}-of-${latest.year}/`;
-
-  return { ...latest, pdfUrl, sourceUrl };
+  if (seen.size === 0) throw new Error('No circulars found on the DPSA listing page.');
+  return [...seen.values()]
+    .sort((a, b) => b.year - a.year || b.number - a.number)
+    .slice(0, CIRCULARS_TO_CHECK)
+    .map((c) => {
+      const padded = String(c.number).padStart(2, '0');
+      return {
+        ...c,
+        sourceUrl: `${DPSA_BASE}/newsroom/psvc/circular-${c.number}-of-${c.year}/`,
+        masterPdfUrl: `${DPSA_BASE}/dpsa2g/documents/vacancies/${c.year}/PSV%20CIRCULAR%20${padded}%20of%20${c.year}.pdf`,
+      };
+    });
 }
 
-// ── 2. Download + parse the PDF (text + link annotations, with page position) ──
-async function parsePdf(pdfUrl) {
-  const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.js');
+// ── 2. The per-department PDFs listed on one circular's page ──
+async function listDepartmentPdfs(circular) {
+  const r = await fetch(circular.sourceUrl, { headers: FETCH_HEADERS });
+  if (!r.ok) throw new Error(`Could not open circular ${circular.number} page (${r.status})`);
+  const html = await r.text();
+  const re = new RegExp(
+    `href="([^"]*\\/vacancies\\/${circular.year}\\/${circular.number}\\/([a-z]{1,2})\\.pdf)"[^>]*>([^<]*)<`,
+    'gi'
+  );
+  const files = [];
+  const seen = new Set();
+  for (const m of html.matchAll(re)) {
+    const url = new URL(m[1], DPSA_BASE).toString();
+    if (seen.has(url)) continue;
+    seen.add(url);
+    files.push({ url, letter: m[2].toUpperCase(), label: m[3].trim() });
+  }
+  // Older circulars without per-department files: fall back to the full PDF.
+  if (files.length === 0) {
+    files.push({ url: circular.masterPdfUrl, letter: null, label: 'Full circular' });
+  }
+  return files;
+}
 
-  const r = await fetch(pdfUrl);
-  if (!r.ok) throw new Error(`Could not download circular PDF (${r.status})`);
-  const buf = Buffer.from(await r.arrayBuffer());
+// ── 3. Download one PDF and get its text, plus where its links sit ──
+async function readPdf(url) {
+  const r = await fetch(url, { headers: FETCH_HEADERS });
+  if (!r.ok) throw new Error(`Could not download ${url} (${r.status})`);
+  const data = new Uint8Array(await r.arrayBuffer());
 
-  const loadingTask = pdfjsLib.getDocument({
-    data: new Uint8Array(buf),
-    disableWorker: true,
+  const doc = await pdfjsLib.getDocument({
+    data,
     isEvalSupported: false,
     useSystemFonts: true,
-  });
-  const doc = await loadingTask.promise;
+    disableFontFace: true,
+  }).promise;
 
-  // One flat array of {type:'text', str, x, y, page} and {type:'link', url, x, y, page}
-  // items, in reading order per page (top-to-bottom by y). This lets the
-  // vacancy parser walk the document once and match a "CLICK HERE" link
-  // annotation to the nearest preceding APPLICATIONS text on the same page.
-  const stream = [];
-  let fullText = '';
+  let text = '';
+  const positions = []; // { offset, page, y } for every text item, in order
+  const links = [];     // { page, y, url }
 
   for (let p = 1; p <= doc.numPages; p++) {
     const page = await doc.getPage(p);
     const content = await page.getTextContent();
     for (const item of content.items) {
-      const y = item.transform ? item.transform[5] : 0;
-      const x = item.transform ? item.transform[4] : 0;
-      stream.push({ type: 'text', str: item.str, x, y, page: p });
-      fullText += item.str + (item.hasEOL ? '\n' : ' ');
+      positions.push({ offset: text.length, page: p, y: item.transform ? item.transform[5] : 0 });
+      text += item.str + (item.hasEOL ? '\n' : ' ');
     }
-    fullText += '\n';
+    text += '\n';
 
     const annots = await page.getAnnotations();
     for (const a of annots) {
       if (a.subtype === 'Link' && a.url) {
-        const y = a.rect ? a.rect[1] : 0;
-        const x = a.rect ? a.rect[0] : 0;
-        stream.push({ type: 'link', url: a.url, x, y, page: p });
+        links.push({ page: p, y: a.rect ? a.rect[1] : 0, url: a.url });
       }
     }
-    stream.sort((a, b) => (a.page - b.page) || (b.y - a.y));
+    page.cleanup();
   }
+  await doc.destroy();
 
-  return { fullText, stream, pageCount: doc.numPages };
-}
-
-// ── 3. Split the full text into Annexures ──
-function splitAnnexures(fullText) {
-  const annexureRegex = /ANNEXURE\s+([A-Z]{1,2})\s*\n\s*([^\n]+)/g;
-  const markers = [...fullText.matchAll(annexureRegex)];
-  const annexures = [];
-
-  for (let i = 0; i < markers.length; i++) {
-    const m = markers[i];
-    const start = m.index;
-    const end = i + 1 < markers.length ? markers[i + 1].index : fullText.length;
-    const letter = m[1];
-    const departmentLine = m[2].trim();
-    const isProvincial = PROVINCIAL_ADMINISTRATIONS.some((p) => departmentLine.toUpperCase().includes(p));
-    annexures.push({
-      annexure: letter,
-      department: departmentLine,
-      province: isProvincial ? titleCase(departmentLine) : null,
-      text: fullText.slice(start, end),
-    });
-  }
-  return annexures;
-}
-
-function titleCase(s) {
-  return s
-    .toLowerCase()
-    .split(' ')
-    .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w))
-    .join(' ');
-}
-
-// ── 4. Extract one labeled field from a block of text ──
-function extractField(text, label) {
-  const otherLabels = FIELD_LABELS.filter((l) => l !== label).map((l) => l.replace(/\s+/g, '\\s+'));
-  const stopPattern = `(?:${otherLabels.join('|')}|POST\\s+\\d+\\/\\d+|ANNEXURE\\s+[A-Z]|$)`;
-  const re = new RegExp(`${label.replace(/\s+/g, '\\s+')}\\s*:\\s*([\\s\\S]*?)(?=${stopPattern})`, 'i');
-  const m = text.match(re);
-  return m ? m[1].replace(/\s+/g, ' ').trim() : null;
-}
-
-// ── 5. Find the application URL for a given text position, via the nearest
-//       link annotation on the same page within a reasonable y-distance ──
-function findNearbyLink(stream, page, y) {
-  let best = null;
-  let bestDist = Infinity;
-  for (const item of stream) {
-    if (item.type !== 'link' || item.page !== page) continue;
-    const dist = Math.abs(item.y - y);
-    if (dist < bestDist && dist < 40) {
-      best = item.url;
-      bestDist = dist;
+  // The PDF link annotation closest to a given character position
+  // (used for "CLICK HERE to apply" style adverts).
+  function linkAt(offset) {
+    let lo = 0;
+    let hi = positions.length - 1;
+    let at = null;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (positions[mid].offset <= offset) { at = positions[mid]; lo = mid + 1; } else { hi = mid - 1; }
     }
+    if (!at) return null;
+    let best = null;
+    let bestDist = Infinity;
+    for (const l of links) {
+      if (l.page !== at.page) continue;
+      const dist = Math.abs(l.y - at.y);
+      if (dist < bestDist && dist < 60) { best = l.url; bestDist = dist; }
+    }
+    return best;
   }
-  return best;
+
+  return { text, linkAt, pageCount: doc.numPages };
 }
 
-function resolveApplicationMethod(applicationsText, stream, page, y) {
-  if (!applicationsText) return { method: null, url: null };
-
-  const emailMatch = applicationsText.match(/[\w.+-]+@[\w-]+\.[\w.-]+/);
-  if (emailMatch) {
-    return { method: 'email', url: null };
-  }
-
-  if (/click here|application link/i.test(applicationsText)) {
-    const url = findNearbyLink(stream, page, y);
-    return { method: url ? 'online_link' : 'unresolved', url: url || null };
-  }
-
-  if (/erecruitment|apply online|portal/i.test(applicationsText)) {
-    const urlMatch = applicationsText.match(/https?:\/\/\S+/);
-    return { method: 'online_portal', url: urlMatch ? urlMatch[0].replace(/[).,]+$/, '') : null };
-  }
-
-  if (/private bag|hand deliver|po box/i.test(applicationsText)) {
-    return { method: 'postal', url: null };
-  }
-
-  return { method: 'unresolved', url: null };
-}
-
-// ── 6. Multi-location vacancy detection ──
-function splitMultiLocation(centreText) {
-  const lineRe = /([A-Za-z][A-Za-z\s]+?)\s*:\s*([A-Za-z\s]+?)\s*Ref\s*No\.?:?\s*([\w\/\-]+)\s*\(X(\d+)\s*Post/gi;
-  const matches = [...centreText.matchAll(lineRe)];
-  if (matches.length < 2) return null;
-
-  return matches.map((m) => ({
-    location: `${m[1].trim()}: ${m[2].trim()}`,
-    reference_number: m[3].trim(),
-    postCount: parseInt(m[4], 10),
-  }));
-}
-
-// ── 7. Confidence scoring ──
-// Two tiers, deliberately not one flat point count:
-//   HARD requirements — without these, the record isn't a trustworthy
-//   vacancy at all, regardless of anything else. Missing any of these
-//   forces LOW, full stop.
-//   SOFT signals — real information that's often present but not always
-//   provided by DPSA itself for every post (reference_number, salary,
-//   location, and a resolved application URL all fall here). Missing one
-//   or two of these is normal and shouldn't block a genuinely well-formed
-//   vacancy from being published — reference_number in particular is
-//   explicitly NOT treated as mandatory, since some real posts in the
-//   source document (confirmed during testing) simply don't carry one.
-//   Missing several soft signals AT ONCE is a different story — that's a
-//   sign of a genuinely low-quality parse, not just an unusually sparse
-//   (but real) listing, so 3+ missing soft signals caps it at LOW too.
-function scoreConfidence(v) {
-  const warnings = [];
-
-  const hardMissing = [];
-  if (!v.title) hardMissing.push('missing title');
-  if (!v.department) hardMissing.push('missing department');
-  if (!v.closing_date) hardMissing.push('missing closing date');
-  if (!v.application_instructions) hardMissing.push('missing application instructions');
-  warnings.push(...hardMissing);
-
-  if (hardMissing.length > 0) {
-    return { confidence: 'low', warnings };
-  }
-
-  let softMissing = 0;
-  if (!v.reference_number) { softMissing++; warnings.push('no reference number found (may genuinely not have one)'); }
-  if (!v.salary_text) { softMissing++; warnings.push('missing salary'); }
-  if (!v.requirements && !v.duties) { softMissing++; warnings.push('missing requirements/duties'); }
-  if (!v.location) { softMissing++; warnings.push('missing location'); }
-  if (v.application_method === 'unresolved') { softMissing++; warnings.push('application method could not be resolved'); }
-  else if (v.application_method === 'online_link' && !v.official_application_url) {
-    softMissing++;
-    warnings.push('embedded application link could not be confidently matched to this vacancy');
-  }
-
-  let confidence;
-  if (softMissing === 0) confidence = 'high';
-  else if (softMissing <= 2) confidence = 'medium';
-  else confidence = 'low';
-
-  return { confidence, warnings };
-}
-
-function inferJobCategory(title) {
-  const t = title || '';
-  if (/\bintern(ship)?\b/i.test(t) && !/\binternational\b/i.test(t)) return 'internship';
-  if (/\blearnership\b/i.test(t)) return 'learnership';
-  if (/\bgraduate\b/i.test(t)) return 'graduate_programme';
-  return 'general';
-}
-
-function parseClosingDate(text) {
-  if (!text) return null;
-  const m = text.match(/(\d{1,2})\s+(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{4})/i);
-  if (!m) return null;
-  const months = ['january','february','march','april','may','june','july','august','september','october','november','december'];
-  const month = months.indexOf(m[2].toLowerCase());
-  if (month === -1) return null;
-  const d = new Date(Date.UTC(parseInt(m[3], 10), month, parseInt(m[1], 10), 23, 59, 0));
-  return isNaN(d.getTime()) ? null : d.toISOString();
-}
-
-// ── 8. Parse one Annexure's text into vacancy records ──
-function parseAnnexure(annexure, circular, stream) {
-  const { text, department, province, annexure: letter } = annexure;
-
-  let cleanText = text.replace(
-    /ERRATUM[\s\S]*?(?=POST\s+\d+\/\d+|ANNEXURE\s+[A-Z]|$)/gi,
-    '\n'
-  );
-
-  const postSplitRegex = new RegExp(`POST\\s+${circular.number}\\/(\\d+)\\s*:`, 'g');
-  const firstPostMatch = postSplitRegex.exec(cleanText);
-  const deptHeaderText = firstPostMatch ? cleanText.slice(0, firstPostMatch.index) : cleanText;
-
-  const deptApplications = extractField(deptHeaderText, 'APPLICATIONS');
-  const deptClosingRaw = extractField(deptHeaderText, 'CLOSING DATE');
-  const deptClosingDate = parseClosingDate(deptClosingRaw);
-
-  postSplitRegex.lastIndex = 0;
-  const postMarkers = [...cleanText.matchAll(postSplitRegex)];
-
-  const vacancies = [];
-
-  for (let i = 0; i < postMarkers.length; i++) {
-    const m = postMarkers[i];
-    const start = m.index;
-    const end = i + 1 < postMarkers.length ? postMarkers[i + 1].index : cleanText.length;
-    const postNumber = `${circular.number}/${m[1]}`;
-    const block = cleanText.slice(start, end);
-
-    if (ERRATUM_PATTERN.test(block.slice(0, 80))) continue;
-
-    const titleBlockMatch = block.match(
-      new RegExp(`POST\\s+${circular.number}\\/${m[1]}\\s*:\\s*([\\s\\S]*?)(?=SALARY|CENTRE|BRANCH|NATURE OF APPOINTMENT|$)`, 'i')
-    );
-    const titleBlock = titleBlockMatch ? titleBlockMatch[1].replace(/\s+/g, ' ').trim() : '';
-    // Most posts write "REF NO: XXX", but some (confirmed in the real
-    // Circular 34 text — e.g. POST 34/01) just append a bare code like
-    // "DBE/66/2026." with no "REF" label at all. Try the labeled form
-    // first; fall back to a bare department-code shape if that's absent,
-    // since guessing nothing here would under-report a field that's
-    // genuinely present, just unconventionally formatted.
-    const refMatch =
-      titleBlock.match(/REF\.?\s*(?:NO\.?)?\s*:?\s*([A-Z0-9\/\-\.]{3,})/i) ||
-      titleBlock.match(/\b([A-Z]{2,8}\/\d{1,4}\/\d{4})\.?\s*$/);
-    const referenceNumber = refMatch ? refMatch[1].replace(/[.,]$/, '') : null;
-    const title = titleBlock
-      .replace(/REF\.?\s*(?:NO\.?)?\s*:?\s*[A-Z0-9\/\-\.]{3,}.*$/i, '')
-      .replace(/\b[A-Z]{2,8}\/\d{1,4}\/\d{4}\.?\s*$/, '')
-      .trim();
-
-    const salary = extractField(block, 'SALARY');
-    const centre = extractField(block, 'CENTRE');
-    const requirements = extractField(block, 'REQUIREMENTS');
-    const duties = extractField(block, 'DUTIES');
-    const enquiries = extractField(block, 'ENQUIRIES');
-    const postApplications = extractField(block, 'APPLICATIONS');
-    const postClosingRaw = extractField(block, 'CLOSING DATE');
-
-    const applicationsText = postApplications || deptApplications;
-    const closingDate = parseClosingDate(postClosingRaw) || deptClosingDate;
-
-    const appLabelIdx = block.search(/APPLICATIONS\s*:/i);
-    const approxOffsetInAnnexure = start + (appLabelIdx >= 0 ? appLabelIdx : 0);
-    const nearestStreamItem = findStreamPositionForOffset(stream, annexure, approxOffsetInAnnexure);
-    const { method: applicationMethod, url: applicationUrl } = resolveApplicationMethod(
-      applicationsText,
-      stream,
-      nearestStreamItem ? nearestStreamItem.page : 1,
-      nearestStreamItem ? nearestStreamItem.y : 0
-    );
-
-    const salaryLevelMatch = salary && salary.match(/\((?:Level\s*\d+|OSD)\)/i);
-
-    const baseVacancy = {
-      annexure: letter,
-      department: titleCase(department),
-      province,
-      post_number: postNumber,
-      title,
-      reference_number: referenceNumber,
-      salary_text: salary,
-      salary_level: salaryLevelMatch ? salaryLevelMatch[0].replace(/[()]/g, '') : null,
-      location: centre,
-      requirements,
-      duties,
-      enquiries,
-      application_instructions: applicationsText,
-      application_method: applicationMethod,
-      official_application_url: applicationUrl,
-      closing_date: closingDate,
-    };
-
-    const multi = centre ? splitMultiLocation(centre) : null;
-    if (multi) {
-      multi.forEach((loc, idx) => {
-        vacancies.push({
-          ...baseVacancy,
-          location: loc.location,
-          reference_number: loc.reference_number,
-          source_job_id: `${circular.year}-${circular.number}-${m[1]}-${idx}`,
+// ── 4. Supabase helpers (service key, server-side only) ──
+function sb() {
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_KEY;
+  const headers = { apikey: key, Authorization: `Bearer ${key}` };
+  return {
+    async get(path) {
+      const r = await fetch(`${url}/rest/v1/${path}`, { headers });
+      if (!r.ok) throw new Error(`Supabase read failed (${r.status}): ${await r.text()}`);
+      return r.json();
+    },
+    async upsertJobs(records) {
+      const r = await fetch(`${url}/rest/v1/jobs?on_conflict=source,source_job_id`, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify(records),
+      });
+      if (!r.ok) throw new Error(`Saving vacancies failed (${r.status}): ${await r.text()}`);
+    },
+    async log(row) {
+      try {
+        const r = await fetch(`${url}/rest/v1/dpsa_sync_log`, {
+          method: 'POST',
+          headers: { ...headers, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+          body: JSON.stringify([row]),
         });
-      });
-    } else {
-      vacancies.push({
-        ...baseVacancy,
-        source_job_id: `${circular.year}-${circular.number}-${m[1]}`,
-      });
-    }
-  }
-
-  return vacancies;
-}
-
-function findStreamPositionForOffset(stream, annexure, offsetWithinAnnexure) {
-  const textItems = stream.filter((s) => s.type === 'text');
-  let charsIntoAnnexure = 0;
-  let foundAnnexureStart = false;
-
-  for (const item of textItems) {
-    if (!foundAnnexureStart) {
-      if (item.str.includes('ANNEXURE') && annexure && item.str.includes(annexure.annexure)) {
-        foundAnnexureStart = true;
+        // If the table only allows one row per circular, update that row instead.
+        if (r.status === 409) {
+          await fetch(
+            `${url}/rest/v1/dpsa_sync_log?circular_number=eq.${row.circular_number}&circular_year=eq.${row.circular_year}`,
+            {
+              method: 'PATCH',
+              headers: { ...headers, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+              body: JSON.stringify(row),
+            }
+          );
+        } else if (!r.ok) {
+          console.error('dpsa-sync: sync log write failed:', r.status, await r.text());
+        }
+      } catch (e) {
+        console.error('dpsa-sync: could not write sync log:', e.message);
       }
-      continue;
-    }
-    charsIntoAnnexure += item.str.length + 1;
-    if (charsIntoAnnexure >= offsetWithinAnnexure) {
-      return item;
-    }
-  }
-  return textItems.length ? textItems[textItems.length - 1] : null;
+    },
+  };
 }
 
-export const config = {
-  maxDuration: 60,
-};
+function toRecord(v, circular, file, now) {
+  const isPublished = v.confidence === 'high' || v.confidence === 'medium';
+  return {
+    source: 'dpsa',
+    source_job_id: v.source_job_id,
+    government_job: true,
+    title: v.title || `Government vacancy ${v.post_number}`,
+    company_name: v.company_name,
+    department: v.department,
+    province: v.province,
+    annexure: v.annexure,
+    post_number: v.post_number,
+    circular_number: circular.number,
+    circular_year: circular.year,
+    reference_number: v.reference_number,
+    location: v.location,
+    country: 'ZA',
+    is_remote: false,
+    remote_scope: 'onsite',
+    employment_type: 'full_time',
+    job_category: v.job_category,
+    salary_text: v.salary_text,
+    salary_level: v.salary_level,
+    requirements: v.requirements,
+    duties: v.duties,
+    description: v.duties || v.requirements || null,
+    enquiries: v.enquiries,
+    application_instructions: v.application_instructions,
+    application_method: v.application_method,
+    apply_url: v.official_application_url || file.url,
+    official_application_url: v.official_application_url,
+    official_source_url: circular.sourceUrl,
+    official_pdf_url: file.url,
+    closing_date: v.closing_date,
+    confidence_level: v.confidence,
+    review_status: isPublished ? 'published' : 'pending_review',
+    is_active: isPublished,
+    posted_at: now,
+    last_seen_at: now,
+    tags: v.warnings,
+  };
+}
 
 export default async function handler(req, res) {
   if (!process.env.CRON_SECRET) {
     console.error('dpsa-sync: CRON_SECRET not configured on server');
     return res.status(500).json({ error: 'Server not configured correctly.' });
   }
-  const authHeader = req.headers.authorization;
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
   if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
     return res.status(500).json({ error: 'Supabase not configured on server.' });
   }
 
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
+  const started = Date.now();
+  const timeLeft = () => TIME_BUDGET_MS - (Date.now() - started);
+  const db = sb();
+  const report = [];
 
-  let circular;
+  let circulars;
   try {
-    circular = await discoverLatestCircular();
+    circulars = await discoverCirculars();
   } catch (e) {
-    console.error('dpsa-sync: could not discover latest circular:', e.message);
-    return res.status(502).json({ ok: false, error: 'Could not discover latest DPSA circular: ' + e.message });
+    console.error('dpsa-sync:', e.message);
+    return res.status(502).json({ ok: false, error: e.message });
   }
 
-  try {
-    const check = await fetch(
-      `${supabaseUrl}/rest/v1/dpsa_sync_log?circular_number=eq.${circular.number}&circular_year=eq.${circular.year}&select=id`,
-      { headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` } }
-    );
-    if (check.ok) {
-      const rows = await check.json();
-      if (Array.isArray(rows) && rows.length > 0) {
-        return res.status(200).json({ ok: true, message: `Circular ${circular.number} of ${circular.year} already processed.`, circular });
+  for (const circular of circulars) {
+    const summary = { circular: `${circular.number} of ${circular.year}` };
+    report.push(summary);
+
+    if (timeLeft() < MIN_TIME_FOR_A_FILE_MS) { summary.status = 'not reached (time)'; continue; }
+
+    // Already fully imported by this version?
+    try {
+      const done = await db.get(
+        `dpsa_sync_log?circular_number=eq.${circular.number}&circular_year=eq.${circular.year}` +
+        `&status=eq.ok&error_message=eq.${encodeURIComponent(COMPLETE_NOTE)}&select=id&limit=1`
+      );
+      if (Array.isArray(done) && done.length) { summary.status = 'already complete'; continue; }
+    } catch (e) {
+      console.error('dpsa-sync: log check failed, continuing:', e.message);
+    }
+
+    let files;
+    try {
+      files = await listDepartmentPdfs(circular);
+    } catch (e) {
+      summary.status = 'failed';
+      summary.error = e.message;
+      await db.log({
+        circular_number: circular.number, circular_year: circular.year, pdf_url: circular.sourceUrl,
+        vacancies_detected: 0, vacancies_published: 0, vacancies_review: 0,
+        vacancies_skipped_erratum: 0, parsing_warnings: 0, status: 'failed', error_message: e.message,
+      });
+      continue;
+    }
+
+    // Departments already published in an earlier run (resume support)
+    let alreadyImported = new Set();
+    try {
+      const rows = await db.get(
+        `jobs?source=eq.dpsa&circular_number=eq.${circular.number}&circular_year=eq.${circular.year}` +
+        `&review_status=eq.published&select=annexure&limit=2000`
+      );
+      alreadyImported = new Set(rows.map((r) => r.annexure).filter(Boolean));
+    } catch (e) {
+      console.error('dpsa-sync: could not read existing jobs, continuing:', e.message);
+    }
+
+    let detected = 0;
+    let published = 0;
+    let review = 0;
+    let expired = 0;
+    let warnings = 0;
+    let finished = 0;
+    const errors = [];
+    const now = new Date().toISOString();
+
+    for (const file of files) {
+      if (file.letter && alreadyImported.has(file.letter)) { finished++; continue; }
+      if (timeLeft() < MIN_TIME_FOR_A_FILE_MS) break;
+      try {
+        const pdf = await readPdf(file.url);
+        const vacancies = parseVacancies(pdf.text, circular, { linkAt: pdf.linkAt });
+        detected += vacancies.length;
+
+        const records = [];
+        for (const v of vacancies) {
+          if (v.closing_date && new Date(v.closing_date).getTime() < Date.now()) { expired++; continue; }
+          warnings += v.warnings.length;
+          const rec = toRecord(v, circular, file, now);
+          if (rec.is_active) published++; else review++;
+          records.push(rec);
+        }
+        if (records.length) await db.upsertJobs(records);
+        finished++;
+      } catch (e) {
+        console.error(`dpsa-sync: circular ${circular.number} file ${file.url} failed:`, e.message);
+        errors.push(`${file.label}: ${e.message}`.slice(0, 300));
       }
     }
-  } catch (e) {
-    console.error('dpsa-sync: sync-log check failed, continuing:', e.message);
-  }
 
-  let parsed;
-  try {
-    parsed = await parsePdf(circular.pdfUrl);
-  } catch (e) {
-    console.error('dpsa-sync: PDF download/parse failed:', e.message);
-    await logSyncResult(supabaseUrl, supabaseKey, circular, {
-      status: 'failed', error_message: e.message,
+    const complete = finished === files.length && errors.length === 0;
+    Object.assign(summary, {
+      status: complete ? 'complete' : 'partial (continues next run)',
+      departmentFiles: files.length,
+      departmentsDone: finished,
+      vacanciesDetected: detected,
+      published,
+      sentToReview: review,
+      skippedClosed: expired,
+      errors,
     });
-    return res.status(502).json({ ok: false, error: 'Could not download or parse the circular PDF: ' + e.message });
-  }
 
-  const annexures = splitAnnexures(parsed.fullText);
-  let allVacancies = [];
-  for (const annexure of annexures) {
-    try {
-      const vacancies = parseAnnexure(annexure, circular, parsed.stream);
-      allVacancies.push(...vacancies);
-    } catch (e) {
-      console.error(`dpsa-sync: failed to parse Annexure ${annexure.annexure}:`, e.message);
-    }
-  }
-
-  let published = 0;
-  let review = 0;
-  let warningCount = 0;
-  const now = new Date().toISOString();
-  const records = [];
-
-  for (const v of allVacancies) {
-    const { confidence, warnings } = scoreConfidence(v);
-    warningCount += warnings.length;
-    const isPublished = confidence === 'high';
-    if (isPublished) published++; else review++;
-
-    records.push({
-      source: 'dpsa',
-      source_job_id: v.source_job_id,
-      government_job: true,
-      title: v.title || `Government vacancy ${v.post_number}`,
-      company_name: v.department,
-      department: v.department,
-      province: v.province,
-      annexure: v.annexure,
-      post_number: v.post_number,
+    await db.log({
       circular_number: circular.number,
       circular_year: circular.year,
-      reference_number: v.reference_number,
-      location: v.location,
-      country: 'ZA',
-      is_remote: false,
-      remote_scope: 'onsite',
-      employment_type: 'full_time',
-      job_category: inferJobCategory(v.title),
-      salary_text: v.salary_text,
-      salary_level: v.salary_level,
-      requirements: v.requirements,
-      duties: v.duties,
-      description: v.duties || v.requirements || null,
-      enquiries: v.enquiries,
-      application_instructions: v.application_instructions,
-      application_method: v.application_method,
-      apply_url: v.official_application_url,
-      official_application_url: v.official_application_url,
-      official_source_url: circular.sourceUrl,
-      official_pdf_url: circular.pdfUrl,
-      closing_date: v.closing_date,
-      confidence_level: confidence,
-      review_status: isPublished ? 'published' : 'pending_review',
-      is_active: isPublished,
-      posted_at: now,
-      last_seen_at: now,
-      tags: warnings,
+      pdf_url: circular.sourceUrl,
+      vacancies_detected: detected,
+      vacancies_published: published,
+      vacancies_review: review,
+      vacancies_skipped_erratum: 0,
+      parsing_warnings: warnings,
+      status: complete ? 'ok' : (errors.length ? 'failed' : 'partial'),
+      error_message: complete ? COMPLETE_NOTE : (errors.join(' | ').slice(0, 1000) || 'stopped early to stay within the time limit'),
     });
   }
 
-  if (records.length > 0) {
-    try {
-      const upsertRes = await fetch(`${supabaseUrl}/rest/v1/jobs?on_conflict=source,source_job_id`, {
-        method: 'POST',
-        headers: {
-          apikey: supabaseKey,
-          Authorization: `Bearer ${supabaseKey}`,
-          'Content-Type': 'application/json',
-          Prefer: 'resolution=merge-duplicates',
-        },
-        body: JSON.stringify(records),
-      });
-      if (!upsertRes.ok) {
-        const err = await upsertRes.text();
-        console.error('dpsa-sync: upsert failed:', err);
-        await logSyncResult(supabaseUrl, supabaseKey, circular, {
-          status: 'partial',
-          vacancies_detected: allVacancies.length,
-          vacancies_published: 0,
-          vacancies_review: 0,
-          parsing_warnings: warningCount,
-          error_message: 'Upsert failed: ' + err,
-        });
-        return res.status(500).json({ ok: false, error: 'Failed to save vacancies: ' + err });
-      }
-    } catch (e) {
-      console.error('dpsa-sync: upsert threw:', e.message);
-      await logSyncResult(supabaseUrl, supabaseKey, circular, { status: 'failed', error_message: e.message });
-      return res.status(500).json({ ok: false, error: 'Server error while saving vacancies.' });
-    }
-  }
-
-  await logSyncResult(supabaseUrl, supabaseKey, circular, {
-    status: allVacancies.length > 0 ? 'ok' : 'partial',
-    vacancies_detected: allVacancies.length,
-    vacancies_published: published,
-    vacancies_review: review,
-    parsing_warnings: warningCount,
-  });
-
-  return res.status(200).json({
-    ok: true,
-    circular,
-    pageCount: parsed.pageCount,
-    annexuresFound: annexures.length,
-    vacanciesDetected: allVacancies.length,
-    published,
-    review,
-    parsingWarnings: warningCount,
-  });
-}
-
-async function logSyncResult(supabaseUrl, supabaseKey, circular, fields) {
-  try {
-    await fetch(`${supabaseUrl}/rest/v1/dpsa_sync_log`, {
-      method: 'POST',
-      headers: {
-        apikey: supabaseKey,
-        Authorization: `Bearer ${supabaseKey}`,
-        'Content-Type': 'application/json',
-        Prefer: 'resolution=merge-duplicates',
-      },
-      body: JSON.stringify([
-        {
-          circular_number: circular.number,
-          circular_year: circular.year,
-          pdf_url: circular.pdfUrl,
-          vacancies_detected: 0,
-          vacancies_published: 0,
-          vacancies_review: 0,
-          vacancies_skipped_erratum: 0,
-          parsing_warnings: 0,
-          status: 'ok',
-          ...fields,
-        },
-      ]),
-    });
-  } catch (e) {
-    console.error('dpsa-sync: failed to write sync log:', e.message);
-  }
+  return res.status(200).json({ ok: true, seconds: Math.round((Date.now() - started) / 1000), circulars: report });
 }
