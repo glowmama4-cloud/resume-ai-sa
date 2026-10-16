@@ -588,3 +588,147 @@
           '<div class="info">' +
             '<p class="title">' + escapeHtml(job.title) + '</p>' +
             '<p class="company">' +
+            '<p class="company">' + escapeHtml(job.company_name) + '</p>' +
+            '<div class="tags">' +
+              govTags +
+              '<span class="tag">' + escapeHtml(job.location || 'Worldwide') + '</span>' +
+              remoteTag +
+              categoryTag +
+              salaryTag +
+              (!isGov ? '<span class="tag">' + timeAgo(job.posted_at) + '</span>' : '') +
+            '</div>' +
+          '</div>' +
+          '<div class="actions">' +
+          '<a class="apply" href="' + escapeHtml(applyHref) + '" target="_blank" rel="noopener noreferrer">' + applyLabel + '</a>' +
+            (isGov ? '<a class="z83-btn" href="' + escapeHtml(z83Link(job)) + '">📝 Fill Z83 for this post</a>' : '') +
+            '<button class="save-btn' + (isSaved ? ' saved' : '') + '" data-job-id="' + escapeHtml(job.id) + '">' +
+              (isSaved ? '★ Saved' : '☆ Save') +
+            '</button>' +
+          '</div>' +
+        '</div>'
+      );
+    }).join('');
+
+    if (append) {
+      jobListEl.insertAdjacentHTML('beforeend', html);
+    } else {
+      jobListEl.innerHTML = html;
+    }
+  }
+
+  jobListEl.addEventListener('click', function (e) {
+    const btn = e.target.closest('.save-btn');
+    if (!btn) return;
+    toggleSave(btn.dataset.jobId, btn);
+  });
+
+  function buildParams(page) {
+    const params = new URLSearchParams();
+    const search = searchEl.value.trim();
+    if (search) params.set('search', search);
+    params.set('page', String(page));
+    params.set('employment_type', employmentEl.value);
+
+    const jobCategory = jobCategoryEl.value;
+    if (jobCategory) params.set('job_category', jobCategory);
+
+    if (provinceEl.value) params.set('province', provinceEl.value);
+
+    if (activeTab === 'remote') {
+      params.set('is_remote', 'true');
+    } else if (activeTab === 'south_africa') {
+      params.set('country', 'ZA');
+    } else if (activeTab === 'international') {
+      params.set('exclude_country', 'ZA');
+    } else if (activeTab === 'government') {
+      params.set('government_job', 'true');
+    }
+
+    return params;
+  }
+
+  function loadJobs(page, append) {
+    if (!append) {
+      jobListEl.innerHTML = '<div class="loading">Loading jobs…</div>';
+      resultCountEl.textContent = '';
+      loadMoreRow.style.display = 'none';
+    } else {
+      loadMoreBtn.disabled = true;
+      loadMoreBtn.textContent = 'Loading…';
+    }
+
+    const params = buildParams(page);
+
+    fetch('/api/jobs?' + params.toString())
+      .then(function (res) { return res.json(); })
+      .then(function (data) {
+        currentPage = page;
+        totalCount = data.total || 0;
+        renderJobs(data.jobs, append);
+
+        const shown = Math.min(page * 20, totalCount);
+        resultCountEl.textContent = totalCount > 0
+          ? shown + ' of ' + totalCount + ' jobs'
+          : '';
+
+        if (totalCount > page * 20) {
+          loadMoreRow.style.display = 'block';
+          loadMoreBtn.disabled = false;
+          loadMoreBtn.textContent = 'Load more jobs';
+        } else {
+          loadMoreRow.style.display = 'none';
+        }
+      })
+      .catch(function () {
+        if (!append) {
+          jobListEl.innerHTML = '<div class="empty">Couldn\'t load jobs right now — try refreshing.</div>';
+        }
+        loadMoreBtn.disabled = false;
+        loadMoreBtn.textContent = 'Load more jobs';
+      });
+  }
+
+  function refresh() {
+    loadJobs(1, false);
+  }
+
+  searchEl.addEventListener('input', function () {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(refresh, 300);
+  });
+
+  jobCategoryEl.addEventListener('change', refresh);
+  employmentEl.addEventListener('change', refresh);
+  provinceEl.addEventListener('change', refresh);
+
+  tabsEl.addEventListener('click', function (e) {
+    const btn = e.target.closest('.tab');
+    if (!btn) return;
+    tabsEl.querySelectorAll('.tab').forEach(function (t) { t.classList.remove('active'); });
+    btn.classList.add('active');
+    activeTab = btn.dataset.tab;
+    refresh();
+  });
+
+  loadMoreBtn.addEventListener('click', function () {
+    loadJobs(currentPage + 1, true);
+  });
+
+  // Open a tab straight from a link, e.g. /careers.html?tab=government
+  (function tabFromUrl() {
+    const wanted = new URLSearchParams(location.search).get('tab');
+    const btn = wanted && tabsEl.querySelector('.tab[data-tab="' + wanted.replace(/[^a-z_]/g, '') + '"]');
+    if (!btn) return;
+    tabsEl.querySelectorAll('.tab').forEach(function (t) { t.classList.remove('active'); });
+    btn.classList.add('active');
+    activeTab = btn.dataset.tab;
+  })();
+
+  (async function init() {
+    await checkSession();
+    refresh();
+  })();
+</script>
+
+</body>
+</html>
