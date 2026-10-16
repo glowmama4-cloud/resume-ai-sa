@@ -302,7 +302,7 @@ const MONTH_NAMES = ['Month', 'Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','S
 
 function el(html) { const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstChild; }
 function $(id) { return document.getElementById(id); }
-
+  
 /* ── Build the repeating parts of the form ── */
 (function build() {
   const yn = $('yesno');
@@ -405,7 +405,10 @@ $('g_initials').addEventListener('input', () => { $('g_initials').dataset.touche
     if (ref) box.append(' · Ref ' + ref);
     if (circ) box.append(' · DPSA Circular ' + circ);
     box.classList.add('show');
-    $('cvLink').href = '/?job=' + encodeURIComponent(post) + '#app-section';
+    const jobId = p.get('id');
+    $('cvLink').href = /^[0-9a-f-]{36}$/i.test(jobId || '')
+      ? '/?tailor=' + encodeURIComponent(jobId) + '#app-section'
+      : '/?job=' + encodeURIComponent(post) + '#app-section';
   }
 })();
 
