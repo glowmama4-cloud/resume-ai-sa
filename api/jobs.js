@@ -32,6 +32,10 @@ export default async function handler(req, res) {
   const PROVINCES = ['Eastern Cape', 'Free State', 'Gauteng', 'KwaZulu-Natal', 'Limpopo', 'Mpumalanga', 'North West', 'Northern Cape', 'Western Cape'];
   const province = PROVINCES.includes((req.query.province || '').trim()) ? req.query.province.trim() : '';
 
+  // One specific job (used by "Tailor my CV for this post"). Only a real
+  // job id shape is accepted.
+  const jobId = /^[0-9a-f-]{36}$/i.test((req.query.id || '').trim()) ? req.query.id.trim() : '';
+
   const page = parseInt(req.query.page || '1', 10);
   const pageSize = 20;
   const from = (page - 1) * pageSize;
@@ -51,7 +55,9 @@ export default async function handler(req, res) {
   // end instead of the top — Postgres puts empty dates first by default.
   params.set('order', 'posted_at.desc.nullslast');
 
-  if (employmentType && employmentType !== 'all') {
+  if (jobId) {
+    params.set('id', `eq.${jobId}`);
+  } else if (employmentType && employmentType !== 'all') {
     params.set('employment_type', `eq.${employmentType}`);
   }
   if (remoteScope) {
