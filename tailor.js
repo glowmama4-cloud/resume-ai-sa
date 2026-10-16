@@ -11,6 +11,26 @@
  * The normal CV builder, credits and payments are unchanged: tailoring a CV
  * uses one credit exactly like building any other CV.
  */
+/* ── Home page menu on phones ──
+ * On small screens the top menu was wider than the phone, so the
+ * "Build My CV" button was cut off. This lets the menu buttons wrap onto a
+ * second row on phones only. Computers are not affected.
+ */
+(function mobileNavFix() {
+  if (document.getElementById('mobile-nav-fix')) return;
+  const s = document.createElement('style');
+  s.id = 'mobile-nav-fix';
+  s.textContent =
+    '@media (max-width: 640px) {' +
+    ' nav { height: auto; min-height: 58px; padding: 10px 14px; flex-wrap: wrap; gap: 8px; }' +
+    ' .logo { font-size: 18px; }' +
+    ' .nav-right { width: 100%; flex-wrap: wrap; gap: 6px; }' +
+    ' .nav-right > * { flex: 1 1 auto; text-align: center; justify-content: center; }' +
+    ' .nav-btn, .nav-tag { font-size: 12px; padding: 7px 10px; white-space: nowrap; }' +
+    '}';
+  document.head.appendChild(s);
+})();
+
 (function () {
   let tailorJob = null;
 
