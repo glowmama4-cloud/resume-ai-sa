@@ -285,6 +285,29 @@
     color: var(--ink3);
     margin-bottom: 10px;
   }
+  .top-links { display: flex; gap: 8px; flex-wrap: wrap; }
+  .z83-link { background: var(--gold-bg); color: var(--gold-txt); }
+  .z83-link:hover { background: #fdf0c8; }
+  .z83-btn {
+    background: var(--surf);
+    color: var(--sa-green-d);
+    border: 1.5px solid var(--sa-green);
+    text-decoration: none;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 7px 14px;
+    border-radius: 10px;
+    text-align: center;
+    white-space: nowrap;
+  }
+  .z83-btn:hover { background: var(--green-bg); }
+  .tag.closing { background: var(--gold-bg); color: var(--gold-txt); font-weight: 600; }
+  .tag.closing.urgent { background: #fdecea; color: #991b1b; }
+  @media (max-width: 560px) {
+    .card { flex-wrap: wrap; }
+    .actions { width: 100%; flex-direction: row; flex-wrap: wrap; }
+    .actions > * { flex: 1 1 auto; }
+  }
 </style>
 </head>
 <body>
@@ -292,10 +315,13 @@
 <div class="wrap">
   <div class="top-row">
     <span class="eyebrow">Careers</span>
-    <a href="/my-jobs.html" class="my-jobs-link">📁 My Job Search</a>
+    <div class="top-links">
+      <a href="/z83.html" class="my-jobs-link z83-link">📝 Free Z83 form</a>
+      <a href="/my-jobs.html" class="my-jobs-link">📁 My Job Search</a>
+    </div>
   </div>
   <h1>Find your next role</h1>
-  <p class="sub">Jobs from around the world — remote and in-office — apply straight to the employer.</p>
+  <p class="sub">Government posts from the official DPSA circulars, South African jobs and remote work — apply straight to the employer.</p>
 
   <div class="signin-banner" id="signinBanner">
     💡 <a href="/?openAuth=1">Sign in or register free</a> to save jobs and track your applications.
@@ -323,6 +349,18 @@
       <option value="full_time" selected>Full-time</option>
       <option value="part_time">Part-time</option>
       <option value="contract">Contract</option>
+    </select>
+    <select id="province">
+      <option value="">All provinces</option>
+      <option>Eastern Cape</option>
+      <option>Free State</option>
+      <option>Gauteng</option>
+      <option>KwaZulu-Natal</option>
+      <option>Limpopo</option>
+      <option>Mpumalanga</option>
+      <option>North West</option>
+      <option>Northern Cape</option>
+      <option>Western Cape</option>
     </select>
   </div>
 
@@ -365,6 +403,7 @@
   const tabsEl         = document.getElementById('tabs');
   const jobCategoryEl  = document.getElementById('jobCategory');
   const employmentEl   = document.getElementById('employmentType');
+  const provinceEl     = document.getElementById('province');
   const resultCountEl  = document.getElementById('resultCount');
   const loadMoreRow    = document.getElementById('loadMoreRow');
   const loadMoreBtn    = document.getElementById('loadMoreBtn');
@@ -466,6 +505,31 @@
     }
   }
 
+  /* ── Government job helpers ── */
+  // "Closes 30 Oct 2026 · 5 days left" (red when 3 days or fewer)
+  function closingTag(closingDate) {
+    if (!closingDate) return '';
+    const d = new Date(closingDate);
+    const dateTxt = d.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
+    const daysLeft = Math.ceil((d.getTime() - Date.now()) / 86400000);
+    let left = '';
+    if (daysLeft <= 0) left = ' · closes today';
+    else if (daysLeft === 1) left = ' · 1 day left';
+    else if (daysLeft <= 14) left = ' · ' + daysLeft + ' days left';
+    const urgent = daysLeft <= 3 ? ' urgent' : '';
+    return '<span class="tag closing' + urgent + '">⏳ Closes ' + escapeHtml(dateTxt) + left + '</span>';
+  }
+
+  // Link to the Z83 page with this post's details already filled in
+  function z83Link(job) {
+    const p = new URLSearchParams();
+    if (job.title) p.set('post', job.title);
+    if (job.department || job.company_name) p.set('dept', job.department || job.company_name);
+    if (job.reference_number) p.set('ref', job.reference_number);
+    if (job.circular_number) p.set('circular', job.circular_number + ' of ' + job.circular_year);
+    return '/z83.html?' + p.toString();
+  }
+
   /* ── Job list rendering ── */
   function renderJobs(jobs, append) {
     if (!jobs || jobs.length === 0) {
@@ -480,8 +544,11 @@
       const logo = job.company_logo_url
         ? '<img src="' + escapeHtml(job.company_logo_url) + '" alt="">'
         : (isGov ? '🏛' : initial);
+      // Show the salary level only if the salary text doesn't already say it
+      const salaryHasLevel = job.salary_level && job.salary_text &&
+        job.salary_text.toLowerCase().includes(String(job.salary_level).toLowerCase());
       const salaryTag = job.salary_text
-        ? '<span class="tag salary">' + escapeHtml(job.salary_text) + (job.salary_level ? ' (' + escapeHtml(job.salary_level) + ')' : '') + '</span>'
+        ? '<span class="tag salary">' + escapeHtml(job.salary_text) + (job.salary_level && !salaryHasLevel ? ' (' + escapeHtml(job.salary_level) + ')' : '') + '</span>'
         : '';
       const remoteLabel = REMOTE_SCOPE_LABELS[job.remote_scope] || '';
       const remoteTag = remoteLabel
@@ -497,7 +564,7 @@
         ? (
             '<span class="tag category">🏛 Government</span>' +
             (job.reference_number ? '<span class="tag">Ref: ' + escapeHtml(job.reference_number) + '</span>' : '') +
-            (job.closing_date ? '<span class="tag">Closes ' + escapeHtml(new Date(job.closing_date).toLocaleDateString('en-ZA', {day:'numeric',month:'short',year:'numeric'})) + '</span>' : '') +
+            closingTag(job.closing_date) +
             (job.circular_number ? '<span class="tag">Circular ' + escapeHtml(String(job.circular_number)) + ' of ' + escapeHtml(String(job.circular_year)) + '</span>' : '')
           )
         : '';
@@ -520,133 +587,4 @@
           '<div class="logo">' + logo + '</div>' +
           '<div class="info">' +
             '<p class="title">' + escapeHtml(job.title) + '</p>' +
-            '<p class="company">' + escapeHtml(job.company_name) + '</p>' +
-            '<div class="tags">' +
-              govTags +
-              '<span class="tag">' + escapeHtml(job.location || 'Worldwide') + '</span>' +
-              remoteTag +
-              categoryTag +
-              salaryTag +
-              (!isGov ? '<span class="tag">' + timeAgo(job.posted_at) + '</span>' : '') +
-            '</div>' +
-          '</div>' +
-          '<div class="actions">' +
-          '<a class="apply" href="' + escapeHtml(applyHref) + '" target="_blank" rel="noopener noreferrer">' + applyLabel + '</a>' +
-            '<button class="save-btn' + (isSaved ? ' saved' : '') + '" data-job-id="' + escapeHtml(job.id) + '">' +
-              (isSaved ? '★ Saved' : '☆ Save') +
-            '</button>' +
-          '</div>' +
-        '</div>'
-      );
-    }).join('');
-
-    if (append) {
-      jobListEl.insertAdjacentHTML('beforeend', html);
-    } else {
-      jobListEl.innerHTML = html;
-    }
-  }
-
-  jobListEl.addEventListener('click', function (e) {
-    const btn = e.target.closest('.save-btn');
-    if (!btn) return;
-    toggleSave(btn.dataset.jobId, btn);
-  });
-
-  function buildParams(page) {
-    const params = new URLSearchParams();
-    const search = searchEl.value.trim();
-    if (search) params.set('search', search);
-    params.set('page', String(page));
-    params.set('employment_type', employmentEl.value);
-
-    const jobCategory = jobCategoryEl.value;
-    if (jobCategory) params.set('job_category', jobCategory);
-
-    if (activeTab === 'remote') {
-      params.set('is_remote', 'true');
-    } else if (activeTab === 'south_africa') {
-      params.set('country', 'ZA');
-    } else if (activeTab === 'international') {
-      params.set('exclude_country', 'ZA');
-    } else if (activeTab === 'government') {
-      params.set('government_job', 'true');
-    }
-
-    return params;
-  }
-
-  function loadJobs(page, append) {
-    if (!append) {
-      jobListEl.innerHTML = '<div class="loading">Loading jobs…</div>';
-      resultCountEl.textContent = '';
-      loadMoreRow.style.display = 'none';
-    } else {
-      loadMoreBtn.disabled = true;
-      loadMoreBtn.textContent = 'Loading…';
-    }
-
-    const params = buildParams(page);
-
-    fetch('/api/jobs?' + params.toString())
-      .then(function (res) { return res.json(); })
-      .then(function (data) {
-        currentPage = page;
-        totalCount = data.total || 0;
-        renderJobs(data.jobs, append);
-
-        const shown = Math.min(page * 20, totalCount);
-        resultCountEl.textContent = totalCount > 0
-          ? shown + ' of ' + totalCount + ' jobs'
-          : '';
-
-        if (totalCount > page * 20) {
-          loadMoreRow.style.display = 'block';
-          loadMoreBtn.disabled = false;
-          loadMoreBtn.textContent = 'Load more jobs';
-        } else {
-          loadMoreRow.style.display = 'none';
-        }
-      })
-      .catch(function () {
-        if (!append) {
-          jobListEl.innerHTML = '<div class="empty">Couldn\'t load jobs right now — try refreshing.</div>';
-        }
-        loadMoreBtn.disabled = false;
-        loadMoreBtn.textContent = 'Load more jobs';
-      });
-  }
-
-  function refresh() {
-    loadJobs(1, false);
-  }
-
-  searchEl.addEventListener('input', function () {
-    clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(refresh, 300);
-  });
-
-  jobCategoryEl.addEventListener('change', refresh);
-  employmentEl.addEventListener('change', refresh);
-
-  tabsEl.addEventListener('click', function (e) {
-    const btn = e.target.closest('.tab');
-    if (!btn) return;
-    tabsEl.querySelectorAll('.tab').forEach(function (t) { t.classList.remove('active'); });
-    btn.classList.add('active');
-    activeTab = btn.dataset.tab;
-    refresh();
-  });
-
-  loadMoreBtn.addEventListener('click', function () {
-    loadJobs(currentPage + 1, true);
-  });
-
-  (async function init() {
-    await checkSession();
-    refresh();
-  })();
-</script>
-
-</body>
-</html>
+            '<p class="company">' +
