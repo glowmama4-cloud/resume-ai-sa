@@ -998,7 +998,7 @@ function selectPlan(plan) {
 function payFast() {
   if (!currentUser) { closePaywall(); openAuth(); return; }
   const amount = selectedPlan === 'starter' ? '30.00' : '99.00';
-  const item   = selectedPlan === 'starter' ? 'ResumeAI SA Starter (3 CVs)' : 'ResumeAI SA Pro (30 days unlimited)';
+  const item   = selectedPlan === 'starter' ? 'ResumeAI SA Starter (3 CVs)' : 'ResumeAI SA Pro (30 credits)';
   const form   = document.createElement('form');
   form.method  = 'POST';
   form.action  = CONFIG.PAYFAST_URL;
