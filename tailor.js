@@ -31,6 +31,25 @@
   document.head.appendChild(s);
 })();
 
+/* ── Footer: real policy pages + correct support email ── */
+(function footerLinks() {
+  function apply() {
+    const footer = document.querySelector('footer');
+    if (!footer) return;
+    const pages = { 'privacy policy': '/privacy.html', 'terms of use': '/terms.html', 'refund policy': '/refund.html' };
+    footer.querySelectorAll('a').forEach(function (a) {
+      const key = a.textContent.trim().toLowerCase();
+      if (pages[key]) a.href = pages[key];
+      if (/^mailto:/i.test(a.getAttribute('href') || '')) {
+        a.href = 'mailto:support@resumeaisa.co.za';
+        a.textContent = 'support@resumeaisa.co.za';
+      }
+    });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', apply);
+  else apply();
+})();
+
 /* ── Honest Pro plan wording + Pro extras fix ──
  * The Pro plan gives 30 credits that never expire (see api/notify.js), so
  * the price card and paywall now say exactly that instead of "Unlimited".
