@@ -13,6 +13,10 @@
 //     (currently no source reliably provides one, but this is here for
 //     when a source — e.g. a future government integration — does)
 
+export const config = {
+  maxDuration: 60,
+};
+
 const STALE_AFTER_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
 
 function guessEmploymentType(raw) {
@@ -218,40 +222,82 @@ async function fetchRemoteOK() {
   }
 }
 
+// Adzuna's free plan allows 25 calls/minute, 250/day, 1,000/week and
+// 2,500/month. This uses about 18 calls per daily run (~540/month):
+//   - South Africa: 10 pages x 50 newest jobs (all job types), plus one
+//     page each for learnerships, internships and graduate programmes
+//   - other countries: unchanged (1 page of 25 full-time jobs each)
+const ADZUNA_ZA_PAGES = 10;
+const ADZUNA_ZA_EXTRA_SEARCHES = ['learnership', 'internship', 'graduate programme'];
+const ADZUNA_OTHER_COUNTRIES = ['us', 'gb', 'au', 'ca', 'de'];
+
+function adzunaEmploymentType(j) {
+  const t = guessEmploymentType(j.contract_time);
+  if (t !== 'unknown') return t;
+  if (j.contract_type === 'contract') return 'contract';
+  if (j.contract_type === 'permanent') return 'full_time';
+  return 'unknown';
+}
+
+function mapAdzunaJob(j, country) {
+  return {
+    source: 'adzuna',
+    source_job_id: String(j.id),
+    title: j.title,
+    company_name: j.company?.display_name || 'Unknown',
+    company_logo_url: null,
+    location: j.location?.display_name || country.toUpperCase(),
+    country: country.toUpperCase(), // Adzuna is queried per-country, so this is reliable
+    is_remote: /remote/i.test(j.title) || /remote/i.test(j.description || ''),
+    employment_type: adzunaEmploymentType(j),
+    salary_text: j.salary_min && j.salary_max ? `${j.salary_min}-${j.salary_max}` : null,
+    description: j.description ? String(j.description).slice(0, 2000) : null,
+    apply_url: j.redirect_url,
+    tags: [],
+    posted_at: j.created || null,
+  };
+}
+
+async function adzunaPage(appId, appKey, country, page, extra) {
+  const params = new URLSearchParams({ app_id: appId, app_key: appKey, ...extra });
+  const url = `https://api.adzuna.com/v1/api/jobs/${country}/search/${page}?${params.toString()}`;
+  try {
+    const r = await fetch(url);
+    if (!r.ok) return [];
+    const data = await r.json();
+    return (data.results || []).map((j) => mapAdzunaJob(j, country));
+  } catch {
+    return [];
+  }
+}
+
 async function fetchAdzuna() {
   const appId = process.env.ADZUNA_APP_ID;
   const appKey = process.env.ADZUNA_APP_KEY;
   if (!appId || !appKey) return []; // optional source, skip if not configured
 
-  const countries = ['us', 'gb', 'za', 'au', 'ca', 'de'];
+  const calls = [];
+  // South Africa — the newest jobs of every type, several pages deep
+  for (let page = 1; page <= ADZUNA_ZA_PAGES; page++) {
+    calls.push(adzunaPage(appId, appKey, 'za', page, { results_per_page: '50', sort_by: 'date', max_days_old: '30' }));
+  }
+  // South Africa — entry-level searches job seekers ask for most
+  for (const what of ADZUNA_ZA_EXTRA_SEARCHES) {
+    calls.push(adzunaPage(appId, appKey, 'za', 1, { results_per_page: '50', what, sort_by: 'date', max_days_old: '60' }));
+  }
+  // Other countries — unchanged from before
+  for (const country of ADZUNA_OTHER_COUNTRIES) {
+    calls.push(adzunaPage(appId, appKey, country, 1, { results_per_page: '25', full_time: '1' }));
+  }
+
+  const pages = await Promise.all(calls);
+  // The same job can appear in more than one search — keep it once
+  const seen = new Set();
   const results = [];
-  for (const country of countries) {
-    try {
-      const url = `https://api.adzuna.com/v1/api/jobs/${country}/search/1?app_id=${appId}&app_key=${appKey}&results_per_page=25&full_time=1`;
-      const r = await fetch(url);
-      if (!r.ok) continue;
-      const data = await r.json();
-      for (const j of data.results || []) {
-        results.push({
-          source: 'adzuna',
-          source_job_id: String(j.id),
-          title: j.title,
-          company_name: j.company?.display_name || 'Unknown',
-          company_logo_url: null,
-          location: j.location?.display_name || country.toUpperCase(),
-          country: country.toUpperCase(), // Adzuna is queried per-country, so this is reliable
-          is_remote: /remote/i.test(j.title) || /remote/i.test(j.description || ''),
-          employment_type: guessEmploymentType(j.contract_time),
-          salary_text: j.salary_min && j.salary_max ? `${j.salary_min}-${j.salary_max}` : null,
-          description: j.description ? String(j.description).slice(0, 2000) : null,
-          apply_url: j.redirect_url,
-          tags: [],
-          posted_at: j.created || null,
-        });
-      }
-    } catch {
-      continue;
-    }
+  for (const job of pages.flat()) {
+    if (seen.has(job.source_job_id)) continue;
+    seen.add(job.source_job_id);
+    results.push(job);
   }
   return results;
 }
