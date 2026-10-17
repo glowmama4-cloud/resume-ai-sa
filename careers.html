@@ -305,6 +305,9 @@
   .tailor-btn:hover { background: #fdf0c8; }
   .tag.closing { background: var(--gold-bg); color: var(--gold-txt); font-weight: 600; }
   .tag.closing.urgent { background: #fdecea; color: #991b1b; }
+  /* Adzuna's terms ask for an "Adzuna" credit (at least 116 x 23 px) linked to their site on every Adzuna job */
+  .adzuna-credit { display: inline-flex; align-items: center; justify-content: center; min-width: 116px; min-height: 23px; margin-top: 8px; padding: 2px 10px; border-radius: 6px; border: 1px solid var(--border2); background: var(--surf); color: var(--ink2); font-size: 11px; font-weight: 600; text-decoration: none; }
+  .adzuna-credit:hover { border-color: var(--sa-green); color: var(--ink); }
   @media (max-width: 560px) {
     .card { flex-wrap: wrap; }
     .actions { width: 100%; flex-direction: row; flex-wrap: wrap; }
@@ -347,8 +350,8 @@
       <option value="graduate_programme">Graduate Programmes</option>
     </select>
     <select id="employmentType">
-      <option value="all">Any employment type</option>
-      <option value="full_time" selected>Full-time</option>
+      <option value="all" selected>Any employment type</option>
+      <option value="full_time">Full-time</option>
       <option value="part_time">Part-time</option>
       <option value="contract">Contract</option>
     </select>
@@ -370,7 +373,6 @@
 
   <div class="list" id="jobList">
     <div class="loading">Loading jobs…</div>
-    
   </div>
 
   <div class="load-more-row" id="loadMoreRow" style="display:none;">
@@ -542,6 +544,14 @@
     return String(title || '').replace(/\s*REF(?:ERENCE)?\.?\s*NO\.?\s*:?\s*\S+\s*$/i, '').trim();
   }
 
+  // Adzuna credit link — each country's own Adzuna site
+  const ADZUNA_SITES = { ZA: 'https://www.adzuna.co.za', GB: 'https://www.adzuna.co.uk', US: 'https://www.adzuna.com', AU: 'https://www.adzuna.com.au', CA: 'https://www.adzuna.ca', DE: 'https://www.adzuna.de' };
+  function adzunaCredit(job) {
+    if (job.source !== 'adzuna') return '';
+    const site = ADZUNA_SITES[job.country] || 'https://www.adzuna.co.za';
+    return '<a class="adzuna-credit" href="' + site + '" target="_blank" rel="noopener">Jobs by Adzuna</a>';
+  }
+
   /* ── Job list rendering ── */
   function renderJobs(jobs, append) {
     if (!jobs || jobs.length === 0) {
@@ -608,6 +618,7 @@
               salaryTag +
               (!isGov ? '<span class="tag">' + timeAgo(job.posted_at) + '</span>' : '') +
             '</div>' +
+            adzunaCredit(job) +
           '</div>' +
           '<div class="actions">' +
           '<a class="apply" href="' + escapeHtml(applyHref) + '" target="_blank" rel="noopener noreferrer">' + applyLabel + '</a>' +
